@@ -1,0 +1,220 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="color-scheme" content="light" />
+  <meta name="theme-color" content="#f6f4ef" />
+
+  <title>notesci — a fully open-source research workspace</title>
+  <meta name="description" content="notesci is a fully open-source personal knowledge base for scientific research. Multi-provider LLMs, MCP tools, citations, and a drafting pipeline — self-hosted, single-user, private." />
+
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+  <link rel="apple-touch-icon" href="/apple-touch-icon.svg" />
+
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter+Tight:wght@400;500;600;700&family=Source+Serif+4:ital,opsz,wght@0,8..60,400;1,8..60,400&family=JetBrains+Mono:wght@500&display=swap" />
+
+  <link rel="stylesheet" href="/styles.css" />
+
+  <meta property="og:type" content="website" />
+  <meta property="og:title" content="notesci — a fully open-source research workspace" />
+  <meta property="og:description" content="Fully open-source personal knowledge base for scientific research. Self-hosted, single-user, private." />
+  <meta property="og:image" content="/apple-touch-icon.svg" />
+  <meta name="twitter:card" content="summary" />
+</head>
+
+<body>
+  <a href="#main" class="skip-to-content">Skip to main content</a>
+
+  <header class="site-header">
+    <div class="container">
+      <a href="/" class="lockup" aria-label="notesci">
+        <svg viewBox="0 0 96 96" aria-hidden="true">
+          <g fill="none" stroke-width="8" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M22 22 L22 70" stroke="oklch(0.52 0.22 274)"/>
+            <path d="M22 22 L52 60" stroke="oklch(0.52 0.22 274)"/>
+          </g>
+          <path d="M76 30 C 76 20, 58 20, 58 32 C 58 42, 74 44, 74 54 C 74 66, 56 66, 52 60" fill="none" stroke="oklch(0.62 0.14 195)" stroke-width="8" stroke-linecap="round"/>
+          <g fill="#f6f4ef" stroke-width="3">
+            <circle cx="22" cy="22" r="5" stroke="oklch(0.52 0.22 274)"/>
+            <circle cx="22" cy="70" r="5" stroke="oklch(0.52 0.22 274)"/>
+            <circle cx="76" cy="30" r="5" stroke="oklch(0.62 0.14 195)"/>
+          </g>
+          <circle cx="52" cy="60" r="6.5" fill="#0e1116"/>
+        </svg>
+        <span class="wordmark"><span class="note">note</span><span class="sci">sci</span></span>
+      </a>
+
+      <nav class="nav-links" aria-label="Primary">
+        <a href="#what">What is it</a>
+        <a href="#features">Features</a>
+        <a href="#self-host">Self-host</a>
+        <a href="https://github.com/psypeal/notesci" rel="noopener">GitHub</a>
+      </nav>
+    </div>
+  </header>
+
+  <main id="main">
+    <section class="hero">
+      <div class="container">
+        <span class="eyebrow">Fully open source · MIT-licensed</span>
+        <h1>A <em>quiet</em> workspace for your own research.</h1>
+        <p class="hero-lede">
+          Notesci is a fully open-source, single-user knowledge base for scientists who want their corpus, drafts,
+          and conversations with an LLM to live on their own machine — not someone else's cloud.
+          Self-hosted, provider-agnostic, and built around the way you actually read and write.
+        </p>
+        <div class="cta-row">
+          <a class="btn btn-primary" href="https://github.com/psypeal/notesci" rel="noopener">
+            <svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+              <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0 0 16 8c0-4.42-3.58-8-8-8z"/>
+            </svg>
+            View on GitHub
+          </a>
+          <a class="btn btn-secondary" href="#self-host">
+            Self-host in 3 steps
+          </a>
+        </div>
+      </div>
+    </section>
+
+    <section id="what">
+      <div class="container">
+        <p class="section-eyebrow">What it is</p>
+        <h2>A research tool, not a SaaS.</h2>
+        <div class="prose">
+          <p>
+            Notesci was built for one person — the researcher running it — to ingest papers,
+            ask questions across their own corpus, generate drafts with reviewer feedback,
+            and trace every claim back to a source. There is no team surface, no sharing,
+            no billing. <strong>One person, one workspace, one machine.</strong>
+          </p>
+          <p>
+            It speaks to multiple LLM providers (Anthropic, OpenAI, Google, DeepSeek) through
+            a single chokepoint, so you're never locked into a vendor. It hosts MCP servers
+            for tools you bring yourself. It stores everything in Postgres + pgvector that
+            you control. And it never sends your private notes to a third party you didn't
+            explicitly configure.
+          </p>
+          <p>
+            This is a fully open-source project. The hosted instance has been retired, and the project now
+            exists as source code you run yourself.
+          </p>
+        </div>
+      </div>
+    </section>
+
+    <section id="features">
+      <div class="container">
+        <p class="section-eyebrow">What's inside</p>
+        <h2>The pieces that make it work.</h2>
+
+        <div class="features">
+          <article class="feature">
+            <div class="feature-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="12" cy="12" r="9"/>
+                <path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18"/>
+              </svg>
+            </div>
+            <h3>Multi-provider LLMs</h3>
+            <p>Anthropic, OpenAI, Google, DeepSeek — pick per session, per draft stage, or per reviewer. One chokepoint, zero vendor lock-in.</p>
+          </article>
+
+          <article class="feature">
+            <div class="feature-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+                <rect x="3" y="4" width="18" height="16" rx="2"/>
+                <path d="M3 10h18M9 4v16"/>
+              </svg>
+            </div>
+            <h3>MCP tools, curated</h3>
+            <p>A server-curated catalog of MCP integrations — one-click install, no JSON to author. Bring your own servers too.</p>
+          </article>
+
+          <article class="feature">
+            <div class="feature-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="6" cy="6" r="2.5"/>
+                <circle cx="18" cy="6" r="2.5"/>
+                <circle cx="6" cy="18" r="2.5"/>
+                <circle cx="18" cy="18" r="2.5"/>
+                <circle cx="12" cy="12" r="2.5"/>
+                <path d="M7.8 7.8 10 10M16.2 7.8 14 10M7.8 16.2 10 14M16.2 16.2 14 14"/>
+              </svg>
+            </div>
+            <h3>Citations & graph view</h3>
+            <p>Every claim is grounded in a source. Four graph lenses — Map, Citations, Concepts, Reasoning — turn your corpus into something you can navigate.</p>
+          </article>
+
+          <article class="feature">
+            <div class="feature-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M4 4h12l4 4v12H4z"/>
+                <path d="M16 4v4h4M8 12h8M8 16h6"/>
+              </svg>
+            </div>
+            <h3>Drafting pipeline</h3>
+            <p>Pre-flight interview → gather → draft → polish → review → iterate until every reviewer signs off. Per-stage model overrides for when you want a different brain on each turn.</p>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <section id="self-host">
+      <div class="container">
+        <p class="section-eyebrow">Get it running</p>
+        <h2>Self-host in three steps.</h2>
+        <div class="prose">
+          <p>
+            notesci ships as a FastAPI backend (Python + LangGraph + Postgres/pgvector) and a
+            Vite + React frontend. Docker Compose handles both. You'll need a host with at
+            least 2 GB of RAM and your own API keys for whichever LLM providers you want to use.
+          </p>
+        </div>
+
+        <ol class="self-host-steps">
+          <li class="step">
+            <h3>Clone the repo</h3>
+            <p><code class="code-inline">git clone https://github.com/psypeal/notesci</code> and copy <code class="code-inline">.env.example</code> to <code class="code-inline">.env</code>.</p>
+          </li>
+          <li class="step">
+            <h3>Add your API keys</h3>
+            <p>Drop in keys for any of Anthropic, OpenAI, Google, or DeepSeek. Provider-locked features gracefully fall back when a key is missing.</p>
+          </li>
+          <li class="step">
+            <h3>Boot it</h3>
+            <p><code class="code-inline">docker compose up -d</code> brings up Postgres, the backend, and the frontend behind nginx. Open <code class="code-inline">localhost</code> and you're in.</p>
+          </li>
+        </ol>
+      </div>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <div class="container">
+      <a href="/" class="lockup" aria-label="notesci">
+        <svg viewBox="0 0 96 96" aria-hidden="true">
+          <g fill="none" stroke-width="8" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M22 22 L22 70" stroke="oklch(0.52 0.22 274)"/>
+            <path d="M22 22 L52 60" stroke="oklch(0.52 0.22 274)"/>
+          </g>
+          <path d="M76 30 C 76 20, 58 20, 58 32 C 58 42, 74 44, 74 54 C 74 66, 56 66, 52 60" fill="none" stroke="oklch(0.62 0.14 195)" stroke-width="8" stroke-linecap="round"/>
+          <g fill="#f6f4ef" stroke-width="3">
+            <circle cx="22" cy="22" r="5" stroke="oklch(0.52 0.22 274)"/>
+            <circle cx="22" cy="70" r="5" stroke="oklch(0.52 0.22 274)"/>
+            <circle cx="76" cy="30" r="5" stroke="oklch(0.62 0.14 195)"/>
+          </g>
+          <circle cx="52" cy="60" r="6.5" fill="#0e1116"/>
+        </svg>
+        <span class="wordmark"><span class="note">note</span><span class="sci">sci</span></span>
+      </a>
+      <div class="footer-meta">
+        MIT · <a href="https://github.com/psypeal/notesci" rel="noopener">github.com/psypeal/notesci</a>
+      </div>
+    </div>
+  </footer>
+</body>
+</html>
