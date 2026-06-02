@@ -55,7 +55,7 @@ jobs:
             libjavascriptcoregtk-4.1-dev librsvg2-dev \
             libayatana-appindicator3-dev build-essential pkg-config \
             rpm fakeroot patchelf libfuse2 \
-            postgresql-server-dev-16 git curl unzip
+            postgresql-server-dev-all libpq-dev git curl unzip
 
       - uses: dtolnay/rust-toolchain@stable
       - uses: actions/setup-node@v4

@@ -64,6 +64,15 @@ case "$(uname -s)" in
         elif [[ -d "$PG_ROOT/include" ]]; then
             PG_VECTOR_CFLAGS="-I$PG_ROOT/include"
         fi
+        if [[ "$(uname -s)" == "Darwin" ]]; then
+            SDKROOT="$(xcrun --sdk macosx --show-sdk-path 2>/dev/null || true)"
+            if [[ -n "$SDKROOT" ]]; then
+                export SDKROOT
+                PG_VECTOR_CFLAGS="$PG_VECTOR_CFLAGS -isysroot $SDKROOT -I$SDKROOT/usr/include"
+                export CFLAGS="${CFLAGS:-} -isysroot $SDKROOT"
+                export CPPFLAGS="${CPPFLAGS:-} -isysroot $SDKROOT -I$SDKROOT/usr/include"
+            fi
+        fi
         export PG_CPPFLAGS="$PG_VECTOR_CFLAGS"
         make -C "$SRC" clean >/dev/null 2>&1 || true
         make -C "$SRC" PG_CONFIG="$PG_CONFIG" PG_CPPFLAGS="$PG_CPPFLAGS"
