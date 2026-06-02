@@ -1,0 +1,4 @@
+[[permission]]
+identifier = "allow-capture-source"
+description = "Allows the in-app browser-preview window to hand its rendered page text to notesci for ingestion."
+commands.allow = ["capture_source"]

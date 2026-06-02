@@ -1,0 +1,31 @@
+/* tokens.css — notesci brand color tokens
+ * Drop into the global stylesheet. All colors use oklch for perceptual
+ * uniformity — accents share chroma & lightness, only hue varies.
+ */
+:root {
+  /* Neutrals */
+  --notesci-ink:    #0e1116;
+  --notesci-paper:  #f6f4ef;
+  --notesci-paper-2:#efece5;
+  --notesci-rule:   rgba(14, 17, 22, 0.12);
+  --notesci-muted:  rgba(14, 17, 22, 0.55);
+
+  /* Accents — same chroma/lightness, varying hue */
+  --notesci-indigo: oklch(0.52 0.22 274);
+  --notesci-teal:   oklch(0.62 0.14 195);
+  --notesci-violet: oklch(0.55 0.22 305);
+
+  /* Brighter variants for use on dark backgrounds */
+  --notesci-teal-bright: oklch(0.78 0.18 195);
+  --notesci-lime-bright: oklch(0.78 0.18 130);
+
+  /* Semantic — pick a canonical pairing for the brand */
+  --notesci-brand-primary:   var(--notesci-indigo);
+  --notesci-brand-secondary: var(--notesci-teal);
+  --notesci-brand-hub:       var(--notesci-ink);
+  /* Canonical pairing: teal + indigo */
+
+  /* Type */
+  --notesci-font-sans: "Inter Tight", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --notesci-font-mono: "JetBrains Mono", ui-monospace, monospace;
+}

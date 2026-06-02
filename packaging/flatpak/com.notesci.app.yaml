@@ -1,0 +1,97 @@
+# Flatpak manifest for notesci — submittable to Flathub.
+#
+# Build locally:
+#   flatpak-builder --user --install build/flatpak packaging/flatpak/com.notesci.app.yaml
+#
+# Submit to Flathub: open a PR against
+#   https://github.com/flathub/flathub adding a new submission with this
+#   manifest. Review cycle is typically 2-4 weeks; details at
+#   https://docs.flathub.org/docs/for-app-authors/submission
+
+app-id: com.notesci.app
+runtime: org.freedesktop.Platform
+runtime-version: "23.08"
+sdk: org.freedesktop.Sdk
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.rust-stable
+  - org.freedesktop.Sdk.Extension.node20
+command: notesci
+
+finish-args:
+  # WebKitGTK needs IPC + DRI for hardware accel.
+  - --share=ipc
+  - --share=network
+  - --socket=fallback-x11
+  - --socket=wayland
+  - --device=dri
+  - --filesystem=xdg-documents:rw
+  - --filesystem=xdg-download:rw
+  # User-data location (XDG_DATA_HOME inside the sandbox).
+  - --persist=.
+
+build-options:
+  append-path: /usr/lib/sdk/rust-stable/bin:/usr/lib/sdk/node20/bin
+  env:
+    CARGO_HOME: /run/build/notesci/cargo
+    RUSTFLAGS: -C link-arg=-Wl,-rpath,$ORIGIN/../lib
+
+modules:
+  # ── PostgreSQL 16.4 — embedded server ──────────────────────────
+  - name: postgresql
+    buildsystem: simple
+    build-commands:
+      - ./configure --prefix=/app/pg --without-readline --without-zlib --without-icu
+      - make -j$(nproc)
+      - make install
+    sources:
+      - type: archive
+        url: https://ftp.postgresql.org/pub/source/v16.4/postgresql-16.4.tar.bz2
+        sha256: 971766d645aa73e93b9ef4e3be44201b4f45b5477095b049125403f9f3386d6f
+
+  # ── pgvector 0.8.0 — built against the embedded PG ─────────────
+  - name: pgvector
+    buildsystem: simple
+    build-commands:
+      - make PG_CONFIG=/app/pg/bin/pg_config
+      - make PG_CONFIG=/app/pg/bin/pg_config install
+    sources:
+      - type: git
+        url: https://github.com/pgvector/pgvector.git
+        tag: v0.8.0
+
+  # ── Python 3.12 + backend wheels ───────────────────────────────
+  # Approximate — the actual wheel list is generated at build time
+  # from backend/pyproject.toml. Flathub builds need explicit pinned
+  # wheel URLs + sha256s; we generate this section via
+  # packaging/flatpak/generate-python-modules.py during release prep.
+  - python3-modules.yaml
+
+  # ── notesci (Tauri + frontend) ─────────────────────────────────
+  - name: notesci
+    buildsystem: simple
+    build-commands:
+      # Frontend
+      - cd frontend && npm install --offline && npm run build
+      # Tauri Rust binary
+      - cd desktop/src-tauri && cargo build --release --offline
+      # Install layout
+      - install -Dm755 desktop/src-tauri/target/release/notesci /app/bin/notesci
+      - mkdir -p /app/share/notesci/frontend && cp -r frontend/dist/* /app/share/notesci/frontend/
+      - mkdir -p /app/share/notesci/backend && cp -r backend/* /app/share/notesci/backend/
+      # Desktop entry + icon
+      - install -Dm644 packaging/desktop/notesci.desktop /app/share/applications/com.notesci.app.desktop
+      - install -Dm644 desktop/src-tauri/icons/icon.png /app/share/icons/hicolor/512x512/apps/com.notesci.app.png
+    sources:
+      - type: dir
+        path: ../..
+
+# Submission notes (for the Flathub reviewer):
+#
+#  - notesci is a single-user research workspace; the embedded PG is
+#    bound to 127.0.0.1 inside the sandbox, no LAN exposure.
+#  - --share=network is required because the app talks to LLM
+#    providers (Anthropic / OpenAI / Google / DeepSeek) and MCP
+#    servers chosen by the user.
+#  - --filesystem=xdg-documents:rw + xdg-download:rw scope file
+#    operations (uploads, exports) — no broader host access.
+#  - No telemetry. No external auto-update mechanism (uses Flathub).

@@ -1,0 +1,4 @@
+[[permission]]
+identifier = "allow-open-link-preview"
+description = "Allows opening an external http(s) URL in an in-app browser preview window."
+commands.allow = ["open_link_preview"]

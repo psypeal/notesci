@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>notesci · sign in / sign up</title>
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Inter+Tight:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&family=Source+Serif+4:wght@400;500;600&display=swap" rel="stylesheet" />
+<style>
+  :root{
+    --ink: #0e1116;
+    --paper: #f6f4ef;
+    --paper-2: #efece5;
+    --rule: rgba(14,17,22,.12);
+    --muted: rgba(14,17,22,.55);
+    --indigo: oklch(0.52 0.22 274);
+    --teal:   oklch(0.62 0.14 195);
+    --violet: oklch(0.55 0.22 305);
+    --teal-bright: oklch(0.78 0.18 195);
+    --lime-bright: oklch(0.78 0.18 130);
+  }
+  html,body{margin:0;background:#e9e6df;font-family:"Inter Tight",-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:var(--ink);}
+  *,*::before,*::after{box-sizing:border-box;}
+  .mono{font-family:"JetBrains Mono",ui-monospace,monospace;}
+  .serif{font-family:"Source Serif 4",ui-serif,Georgia,serif;}
+  /* Artboard chrome */
+  .ab{position:relative;width:100%;height:100%;overflow:hidden;background:var(--paper);}
+  .ab.dark{background:var(--ink);color:var(--paper);}
+  /* Spinner — used for invite-validation animation in V2 */
+  @keyframes spin360{to{transform:rotate(360deg);}}
+  @keyframes pulseHub{0%,100%{transform:scale(1);opacity:.6}50%{transform:scale(1.25);opacity:1}}
+  /* V3 graph background — node twinkle */
+  @keyframes twinkle{0%,100%{opacity:.18}50%{opacity:.55}}
+  /* Form primitives */
+  input.ns-input{
+    width:100%;padding:12px 14px;border:1px solid var(--rule);border-radius:10px;
+    font:inherit;font-size:14px;background:#fff;color:var(--ink);outline:none;
+    transition:border-color .15s, box-shadow .15s;
+  }
+  input.ns-input:focus{border-color:var(--indigo);box-shadow:0 0 0 3px color-mix(in oklch, var(--indigo) 22%, transparent);}
+  input.ns-input::placeholder{color:rgba(14,17,22,.4);}
+  .ns-btn{
+    display:inline-flex;align-items:center;justify-content:center;gap:8px;
+    padding:12px 16px;border-radius:10px;border:1px solid var(--ink);background:var(--ink);color:var(--paper);
+    font:inherit;font-weight:500;font-size:14px;cursor:pointer;
+    transition:transform .08s, box-shadow .15s;
+  }
+  .ns-btn:hover{transform:translateY(-1px);box-shadow:0 4px 12px rgba(0,0,0,.12);}
+  .ns-btn.ghost{background:transparent;color:var(--ink);border-color:var(--rule);}
+  .ns-btn.ghost:hover{background:var(--paper-2);}
+  .ns-btn.full{width:100%;}
+  .divider{display:flex;align-items:center;gap:12px;color:var(--muted);font-size:11px;letter-spacing:.08em;}
+  .divider::before,.divider::after{content:"";flex:1;height:1px;background:var(--rule);}
+</style>
+</head>
+<body>
+  <div id="root"></div>
+  <script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+  <script type="text/babel" src="design-canvas.jsx"></script>
+  <script type="text/babel" src="mark.jsx"></script>
+  <script type="text/babel" src="tweaks-panel.jsx"></script>
+  <script type="text/babel" src="signin.jsx"></script>
+  <script type="text/babel" src="flows.jsx"></script>
+  <script type="text/babel" src="flows-mobile.jsx"></script>
+  <script type="text/babel" src="states.jsx"></script>
+  <script type="text/babel" src="emails.jsx"></script>
+  <script type="text/babel" src="app-signin.jsx"></script>
+</body>
+</html>

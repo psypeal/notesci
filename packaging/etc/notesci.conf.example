@@ -1,0 +1,36 @@
+# notesci configuration — sourced by systemd as EnvironmentFile.
+# Format: KEY=VALUE (no `export`, no shell expansion, no spaces around =).
+#
+# Edit values, then: sudo systemctl restart notesci
+#
+# File permissions: mode 0640, owned by root:notesci. Keep API keys
+# private. After editing, journalctl -u notesci -f to confirm.
+
+# ── Database ────────────────────────────────────────────────────
+# Auto-generated at install time. The postinst script syncs this
+# password to the Postgres role on every upgrade — if you change it
+# here, also `ALTER ROLE notesci WITH PASSWORD '...'` in psql.
+NOTESCI_DATABASE_URL=postgresql://notesci:__DB_PASSWORD__@localhost:5432/notesci
+NOTESCI_DB_PASSWORD=__DB_PASSWORD__
+
+# ── Operator admin token ───────────────────────────────────────
+# Used for the /admin/* endpoints (bootstrap a workspace, mint invites).
+# Auto-generated at install; rotate by editing this value and restarting.
+NOTESCI_ADMIN_TOKEN=__ADMIN_TOKEN__
+
+# ── LLM provider API keys ──────────────────────────────────────
+# At least one is required for /chat to return replies. notesci is
+# provider-agnostic; missing providers silently fall out of the picker.
+# ANTHROPIC_API_KEY=
+# OPENAI_API_KEY=
+# GOOGLE_API_KEY=
+# DEEPSEEK_API_KEY=
+
+# ── Frontend static assets ─────────────────────────────────────
+# The .deb installs the built SPA at /opt/notesci/frontend; the
+# backend serves it from there when this var is set.
+NOTESCI_STATIC_DIR=/opt/notesci/frontend
+
+# ── Optional: bind/port overrides ──────────────────────────────
+# Defaults to 127.0.0.1:8000 (set by the systemd unit's ExecStart).
+# If you want LAN access, edit the unit file (override.conf) — not here.

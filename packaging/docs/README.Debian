@@ -1,0 +1,78 @@
+notesci for Debian / Ubuntu
+===========================
+
+notesci ships as a native desktop application (Tauri-built native
+binary embedding the React frontend in a WebKitGTK window). When you
+launch the app, it spawns the Python backend (uvicorn) as a child
+process; closing the app's window kills the backend.
+
+Installation lays out:
+
+  /opt/notesci/bin/notesci    Tauri desktop binary (the launcher)
+  /opt/notesci/backend/       Python source (read-only at runtime)
+  /opt/notesci/frontend/      Pre-built SPA assets (embedded in the
+                              Tauri binary; this dir is also kept as
+                              a debugging reference)
+  /opt/notesci/venv/          Bundled Python virtualenv (built on
+                              install from /opt/notesci/wheels/)
+  /opt/notesci/wheels/        Pre-downloaded pip wheels (for offline
+                              postinst venv rebuilds)
+  /etc/notesci/notesci.conf   Configuration (mode 0640, root:notesci)
+  /var/lib/notesci/           Runtime state (currently empty)
+  /usr/share/applications/notesci.desktop   App menu entry
+  /usr/share/icons/hicolor/.../notesci.png  App icons
+
+Launching
+---------
+
+Open the "notesci" entry in your apps menu, or run from a terminal:
+
+  notesci                           # if /opt/notesci/bin is on $PATH
+  /opt/notesci/bin/notesci          # absolute
+
+To see backend logs while debugging, launch from a terminal — the
+backend's stderr writes to the same terminal.
+
+Configuration
+-------------
+
+Edit /etc/notesci/notesci.conf to add LLM provider API keys, then
+restart the app:
+
+  sudo nano /etc/notesci/notesci.conf
+  # quit and relaunch notesci
+
+The DB password and admin token are auto-generated on first install;
+don't change them by hand unless you know what you're doing.
+
+Bootstrap a workspace
+---------------------
+
+The first member is created via the operator-only admin endpoint.
+With notesci running:
+
+  TOKEN=$(grep NOTESCI_ADMIN_TOKEN /etc/notesci/notesci.conf | cut -d= -f2-)
+  PORT=8765   # default — see /opt/notesci/bin/notesci's logs to confirm
+  curl -X POST http://127.0.0.1:$PORT/admin/workspaces \
+    -H "x-admin-token: $TOKEN" \
+    -H "content-type: application/json" \
+    -d '{"slug":"notesci","name":"notesci","admin_email":"you@example.com"}'
+
+The response contains an invite code; use it in the app's sign-in
+screen to create your member account.
+
+Uninstall
+---------
+
+  sudo apt remove notesci    # removes /opt/notesci, keeps DB + config
+  sudo apt purge  notesci    # also drops the notesci database + role
+                              # + removes /etc/notesci + system user
+
+Upgrades
+--------
+
+  sudo apt install ./notesci_NEWVERSION_amd64.deb
+
+Config is preserved across upgrades. The venv is rebuilt by postinst
+on every install/reinstall (the bundled wheels make this fast and
+offline).

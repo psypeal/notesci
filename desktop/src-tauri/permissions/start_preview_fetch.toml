@@ -1,0 +1,4 @@
+[[permission]]
+identifier = "allow-start-preview-fetch"
+description = "Allows the main window to spawn the hidden loader window that fetches a source page past JS/Cloudflare challenges."
+commands.allow = ["start_preview_fetch"]

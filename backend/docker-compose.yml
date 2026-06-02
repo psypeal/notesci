@@ -1,0 +1,20 @@
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_USER: notesci
+      POSTGRES_PASSWORD: notesci_dev
+      POSTGRES_DB: notesci
+    ports:
+      # Host 5433 so we don't collide with a system Postgres on 5432.
+      - "5433:5432"
+    volumes:
+      - notesci-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U notesci -d notesci"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  notesci-pgdata:

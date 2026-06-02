@@ -1,0 +1,4 @@
+[[permission]]
+identifier = "allow-capture-from-preview"
+description = "Allows the review modal's 'Add to notesci' button to capture the embedded preview's rendered page text."
+commands.allow = ["capture_from_preview"]

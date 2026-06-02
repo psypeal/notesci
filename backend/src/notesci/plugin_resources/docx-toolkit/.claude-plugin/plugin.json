@@ -1,0 +1,9 @@
+{
+  "name": "docx-toolkit",
+  "version": "1.0.0",
+  "description": "DOCX creation, editing, validation, tracked-change cleanup, comments, and OOXML inspection workflows for research manuscripts and reports.",
+  "author": {
+    "name": "davila7/claude-code-templates"
+  },
+  "license": "Proprietary"
+}

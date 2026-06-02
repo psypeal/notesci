@@ -1,0 +1,28 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "Default capability for the main window.",
+  "windows": ["main"],
+  "remote": {
+    "urls": [
+      "http://127.0.0.1:8765/*",
+      "http://localhost:8765/*"
+    ]
+  },
+  "permissions": [
+    "core:default",
+    "core:window:allow-show",
+    "core:window:allow-set-title",
+    "core:webview:default",
+    "shell:default",
+    "shell:allow-open",
+    "allow-export-file",
+    "allow-open-url",
+    "allow-open-link-preview",
+    "allow-embed-preview",
+    "allow-close-preview",
+    "allow-capture-from-preview",
+    "allow-start-preview-fetch",
+    "allow-cancel-preview-fetch"
+  ]
+}

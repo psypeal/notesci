@@ -1,0 +1,11 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "source-preview",
+  "description": "In-app browser preview — both the standalone window and the child webview embedded in the review modal share the 'source-preview' label. Loads arbitrary remote pages so the user can read sources that block server-side fetching, and grants that remote page exactly one command — capture_source — so its injected 'Add to notesci' button can hand the rendered text back. No other notesci IPC is exposed to remote content.",
+  "windows": ["source-preview"],
+  "webviews": ["source-preview"],
+  "remote": {
+    "urls": ["http://*/*", "https://*/*"]
+  },
+  "permissions": ["allow-capture-source"]
+}

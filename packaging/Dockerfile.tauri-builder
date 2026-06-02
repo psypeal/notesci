@@ -1,0 +1,45 @@
+# Build environment for the Tauri desktop binary.
+#
+# Why a container: the local Linux host doesn't have libwebkit2gtk-4.1-dev
+# installed (and installing it needs sudo). Compiling Tauri inside this
+# image isolates the build deps from the host. The output binary still
+# links against libwebkit2gtk-4.1-0 (runtime), which the .deb declares
+# as a Depends so end-user installs pull it in — same situation.
+#
+# Build the image:
+#   docker build -t notesci-tauri-builder \
+#     -f packaging/Dockerfile.tauri-builder packaging/
+#
+# Build the binary:
+#   docker run --rm \
+#     -v "$PWD":/work \
+#     -v notesci-cargo-cache:/root/.cargo/registry \
+#     -v notesci-cargo-git:/root/.cargo/git \
+#     -v notesci-cargo-target:/work/desktop/src-tauri/target \
+#     -u "$(id -u):$(id -g)" \
+#     notesci-tauri-builder \
+#     bash -c "cd /work/desktop/src-tauri && cargo build --release"
+
+FROM ubuntu:24.04
+
+ENV DEBIAN_FRONTEND=noninteractive
+ENV CARGO_HOME=/root/.cargo
+ENV RUSTUP_HOME=/root/.rustup
+ENV PATH=/root/.cargo/bin:$PATH
+
+# System build deps — exact set Tauri 2 needs on Ubuntu 24.04. These
+# match the apt install command the local build-deb.sh hints at when
+# pkg-config probes fail.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        ca-certificates curl build-essential pkg-config \
+        libwebkit2gtk-4.1-dev libsoup-3.0-dev libjavascriptcoregtk-4.1-dev \
+        librsvg2-dev libayatana-appindicator3-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+# Pin rustup to a stable channel that matches what most contributors
+# would have locally (1.94+ at time of writing).
+RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \
+    | sh -s -- -y --default-toolchain stable --profile minimal \
+    && chmod -R a+rwX /root/.cargo /root/.rustup
+
+WORKDIR /work

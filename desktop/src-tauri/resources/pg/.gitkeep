@@ -1,0 +1,10 @@
+# Placeholder so `bundle.resources` ("resources/pg/" -> "pg/") validates at
+# build time even when no embedded Postgres tree is staged here.
+#
+# - .deb / dev builds: this dir holds ONLY this file → pg.rs::detect() finds
+#   no pg/bin/postgres and takes Mode::System (system Postgres).
+# - macOS / Windows / AppImage builds: the packaging scripts `rm -rf` this
+#   dir and stage a real PG tree (bin/lib/share) here → Mode::Embedded.
+#
+# Do NOT commit a real PG tree here — it's fetched/built per-OS by
+# packaging/embedded-postgres/*.

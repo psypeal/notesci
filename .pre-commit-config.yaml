@@ -1,0 +1,67 @@
+repos:
+  # ---------------------------------------------------------------------------
+  # Python (backend) — ruff check + format.
+  # ---------------------------------------------------------------------------
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.7.4
+    hooks:
+      - id: ruff
+        name: ruff (lint)
+        args: [--fix]
+        files: ^backend/(src|tests)/.*\.py$
+      - id: ruff-format
+        name: ruff (format)
+        files: ^backend/(src|tests)/.*\.py$
+
+  # ---------------------------------------------------------------------------
+  # Frontend — eslint on staged TS/TSX files.
+  # ---------------------------------------------------------------------------
+  - repo: local
+    hooks:
+      - id: eslint-frontend
+        name: eslint (frontend)
+        entry: bash -c 'cd frontend && pnpm exec eslint --fix --max-warnings 0 "$@"' --
+        language: system
+        files: ^frontend/src/.*\.(ts|tsx|js|jsx)$
+        pass_filenames: true
+
+      # Optional manual-stage TypeScript type-check. tsc --noEmit on the
+      # whole project is too slow for every commit, but useful to run
+      # explicitly before pushing.
+      - id: tsc-frontend
+        name: tsc --noEmit (frontend)
+        entry: bash -c 'cd frontend && pnpm exec tsc --noEmit'
+        language: system
+        pass_filenames: false
+        stages: [manual]
+
+  # ---------------------------------------------------------------------------
+  # Single-chokepoints guard — see CLAUDE.md > Working rules.
+  #
+  # The only places that may instantiate provider clients are
+  # ``agent/providers.py`` and ``agent/embeddings.py``. Other modules
+  # must go through ``make_chat_model`` / ``make_embedding_model``.
+  # ---------------------------------------------------------------------------
+  - repo: local
+    hooks:
+      - id: forbid-direct-provider-imports
+        name: forbid direct provider imports outside agent/providers.py & agent/embeddings.py
+        language: system
+        entry: bash -c '
+          set -eu;
+          PATTERN="^(import|from)[[:space:]]+(langchain_anthropic|langchain_openai|langchain_google|langchain_deepseek|anthropic|openai)\b|\b(init_chat_model|init_embeddings)\b";
+          FAIL=0;
+          for f in "$@"; do
+            case "$f" in
+              backend/src/notesci/agent/providers.py|backend/src/notesci/agent/embeddings.py)
+                continue;;
+            esac;
+            if grep -nE "$PATTERN" "$f" >/dev/null 2>&1; then
+              echo "[chokepoint] $f imports a provider directly — route through agent/providers.py or agent/embeddings.py";
+              grep -nE "$PATTERN" "$f";
+              FAIL=1;
+            fi;
+          done;
+          exit $FAIL' --
+        files: ^backend/src/notesci/.*\.py$
+        pass_filenames: true

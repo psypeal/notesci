@@ -1,0 +1,4 @@
+# Placeholder so bundle.resources ("resources/backend/" -> "backend/") validates at build time
+# when no backend tree is staged here (e.g. the .deb build, which stays Mode::System/Installed).
+# macOS/Windows/AppImage builds rm -rf this dir and stage the real backend tree via
+# packaging/embedded-python/* (python, backend) or frontend/dist (frontend).

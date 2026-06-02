@@ -1,0 +1,4 @@
+[[permission]]
+identifier = "allow-cancel-preview-fetch"
+description = "Allows the main window to close the source-fetch loader window when the user dismisses the review."
+commands.allow = ["cancel_preview_fetch"]

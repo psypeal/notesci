@@ -1,0 +1,70 @@
+#!/bin/sh
+# notesci postrm — clean up after files are removed.
+#
+# Distinguishes `remove` (keep config, db, user) from `purge`
+# (wipe everything — destructive). `purge` requires explicit
+# operator intent (apt purge / dpkg --purge).
+
+set -e
+
+NS_USER=notesci
+NS_GROUP=notesci
+DB_NAME=notesci
+DB_USER=notesci
+
+log() { echo "notesci: $*"; }
+
+case "$1" in
+  remove|abort-install)
+    # Cleanup desktop integration cache so removed apps don't ghost in
+    # the menu. Failures here are non-fatal — the launcher just won't
+    # disappear until next reboot.
+    if command -v update-desktop-database >/dev/null 2>&1; then
+      update-desktop-database -q /usr/share/applications 2>/dev/null || true
+    fi
+    if command -v gtk-update-icon-cache >/dev/null 2>&1; then
+      gtk-update-icon-cache -q -f /usr/share/icons/hicolor 2>/dev/null || true
+    fi
+    # Pre-Tauri installs may have left a systemd unit registered.
+    if [ -d /run/systemd/system ]; then
+      systemctl disable notesci.service >/dev/null 2>&1 || true
+      systemctl daemon-reload || true
+    fi
+    ;;
+
+  purge)
+    # Destructive: drop DB, drop role, remove config, remove user.
+    log "PURGE: dropping notesci database, role, config, and system user"
+
+    if systemctl is-active --quiet postgresql 2>/dev/null; then
+      su - postgres -c "psql -c 'DROP DATABASE IF EXISTS $DB_NAME'" 2>/dev/null || true
+      su - postgres -c "psql -c 'DROP ROLE IF EXISTS $DB_USER'" 2>/dev/null || true
+    else
+      log "postgresql not running — DB / role not dropped. Drop manually:"
+      log "  sudo -u postgres psql -c 'DROP DATABASE $DB_NAME; DROP ROLE $DB_USER;'"
+    fi
+
+    rm -rf /etc/notesci
+    rm -rf /var/lib/notesci
+    # Venv was created by postinst (not shipped in .deb), so dpkg
+    # won't remove it on its own. Purge takes care of it.
+    rm -rf /opt/notesci/venv
+
+    if getent passwd "$NS_USER" >/dev/null; then
+      deluser --quiet --system "$NS_USER" || true
+    fi
+    if getent group "$NS_GROUP" >/dev/null; then
+      delgroup --quiet --system --only-if-empty "$NS_GROUP" || true
+    fi
+    ;;
+
+  upgrade|failed-upgrade|abort-upgrade|disappear)
+    ;;
+
+  *)
+    echo "postrm called with unknown argument \`$1'" >&2
+    exit 1
+    ;;
+esac
+
+exit 0

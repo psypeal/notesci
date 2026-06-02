@@ -1,0 +1,4 @@
+[[permission]]
+identifier = "allow-export-file"
+description = "Allows exporting the current PDF to a user-selected local folder."
+commands.allow = ["export_file"]

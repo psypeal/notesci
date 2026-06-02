@@ -1,0 +1,25 @@
+#!/bin/sh
+# notesci prerm — stop the service before files are removed.
+
+set -e
+
+case "$1" in
+  remove|upgrade|deconfigure)
+    # Pre-Tauri versions ran notesci as a systemd service. If we're
+    # being removed/upgraded from such an install, stop it first.
+    if [ -d /run/systemd/system ] && systemctl is-active --quiet notesci.service 2>/dev/null; then
+      echo "notesci: stopping legacy notesci.service"
+      systemctl stop notesci.service || true
+    fi
+    ;;
+
+  failed-upgrade)
+    ;;
+
+  *)
+    echo "prerm called with unknown argument \`$1'" >&2
+    exit 1
+    ;;
+esac
+
+exit 0

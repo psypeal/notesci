@@ -1,0 +1,84 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_PASSWORD: notesci_dev
+          POSTGRES_USER: notesci
+          POSTGRES_DB: notesci
+        ports:
+          - 5433:5432
+        options: >-
+          --health-cmd "pg_isready -U notesci"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install uv
+        run: pip install uv
+      - name: Install backend dependencies
+        working-directory: backend
+        run: uv sync --frozen
+      - name: Apply DB migrations
+        working-directory: backend
+        env:
+          DATABASE_URL: postgresql://notesci:notesci_dev@localhost:5433/notesci
+        run: uv run python -m notesci.migrate
+      - name: Lint (ruff)
+        working-directory: backend
+        run: uv run ruff check .
+      - name: Run pytest
+        working-directory: backend
+        env:
+          DATABASE_URL: postgresql://notesci:notesci_dev@localhost:5433/notesci
+        run: uv run pytest -x
+
+  frontend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v3
+        with:
+          version: 9
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: pnpm
+          cache-dependency-path: frontend/pnpm-lock.yaml
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: pnpm install --frozen-lockfile
+      - name: Lint (eslint)
+        working-directory: frontend
+        run: pnpm exec eslint . --max-warnings 0
+      - name: Type-check (tsc)
+        working-directory: frontend
+        run: pnpm exec tsc -b --noEmit
+      - name: Build
+        working-directory: frontend
+        run: pnpm run build
+
+  pre-commit-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install pre-commit
+        run: pip install pre-commit
+      - name: Run pre-commit on all files
+        run: pre-commit run --all-files

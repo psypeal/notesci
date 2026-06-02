@@ -1,0 +1,4 @@
+# Placeholder so bundle.resources ("resources/python/" -> "python/") validates at build time
+# when no python tree is staged here (e.g. the .deb build, which stays Mode::System/Installed).
+# macOS/Windows/AppImage builds rm -rf this dir and stage the real python tree via
+# packaging/embedded-python/* (python, backend) or frontend/dist (frontend).

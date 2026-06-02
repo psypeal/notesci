@@ -1,0 +1,13 @@
+[Desktop Entry]
+Type=Application
+Version=1.0
+Name=notesci
+GenericName=Research Workspace
+Comment=Personal knowledge base for scientific research
+Exec=/opt/notesci/bin/notesci
+Icon=notesci
+Terminal=false
+Categories=Office;Utility;Science;
+StartupNotify=true
+StartupWMClass=notesci
+Keywords=research;notes;chat;llm;knowledge;

@@ -1,0 +1,4 @@
+[[permission]]
+identifier = "allow-close-preview"
+description = "Allows tearing down the embedded in-app browser preview webview."
+commands.allow = ["close_preview"]

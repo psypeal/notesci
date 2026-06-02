@@ -1,0 +1,135 @@
+# Production stack for a single-VPS deploy on Vultr.
+#
+# Three services on a private network:
+#   - postgres : pgvector-enabled Postgres, persisted to a named volume
+#   - backend  : FastAPI + LangGraph (uvicorn, 2 workers)
+#   - frontend : nginx serving the Vite bundle + reverse-proxying /api/
+#
+# Only the frontend exposes a public port (80 → 8080). Front it with
+# Caddy / Traefik / Cloudflare for TLS — see deploy/vultr.md.
+#
+# Bring up:
+#   cp .env.prod.example .env.prod
+#   # edit .env.prod — set DB password + admin token + provider keys
+#   docker compose -f docker-compose.prod.yml --env-file .env.prod up -d
+#
+# Tear down (data preserved):
+#   docker compose -f docker-compose.prod.yml down
+#
+# Tear down + wipe data:
+#   docker compose -f docker-compose.prod.yml down -v
+
+name: notesci
+
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-notesci}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?postgres password is required}
+      POSTGRES_DB: ${POSTGRES_DB:-notesci}
+    volumes:
+      - notesci-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-notesci} -d ${POSTGRES_DB:-notesci}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    # Postgres stays on the private docker network — no host port published.
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-notesci}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-notesci}
+
+      # Production hardening — make these REQUIRED so an operator can't
+      # accidentally bring up the stack without them. With NOTESCI_ENV=prod
+      # the backend refuses to start unless NOTESCI_SECRET_KEY is set
+      # (see backend/src/notesci/crypto.py).
+      NOTESCI_ENV: ${NOTESCI_ENV:?env must be set (prod for production)}
+      NOTESCI_SECRET_KEY: ${NOTESCI_SECRET_KEY:?fernet key required — see .env.prod.example}
+
+      # CORS allowlist — comma-separated origins. Without this, falls back
+      # to localhost:5173 which is wrong in production.
+      NOTESCI_ALLOWED_ORIGINS: ${NOTESCI_ALLOWED_ORIGINS:-}
+
+      # Trusted proxy CIDRs (the docker bridge nets the backend sees X-Forwarded-For from).
+      NOTESCI_TRUSTED_PROXIES: ${NOTESCI_TRUSTED_PROXIES:-172.16.0.0/12}
+
+      # Log format — json is parseable by `docker logs`.
+      NOTESCI_LOG_FORMAT: ${NOTESCI_LOG_FORMAT:-json}
+
+      # Provider keys — set the ones you have. notesci is multi-provider;
+      # at least one chat key is needed for /chat to actually answer.
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      GOOGLE_API_KEY: ${GOOGLE_API_KEY:-}
+      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
+      NOTESCI_DEFAULT_MODEL: ${NOTESCI_DEFAULT_MODEL:-anthropic:claude-sonnet-4-6}
+      # Embedding model — "<provider>:<model_id>". Drives document
+      # ingestion + chat retrieval. Must be a provider whose key is set
+      # below (e.g. google_genai:gemini-embedding-001 with GOOGLE_API_KEY,
+      # or openai:text-embedding-3-small with a real OPENAI_API_KEY).
+      NOTESCI_DEFAULT_EMBEDDING: ${NOTESCI_DEFAULT_EMBEDDING:-openai:text-embedding-3-small}
+      # OPENAI_BASE_URL routes OpenAI-compatible traffic through a
+      # third-party proxy when set; NOTESCI_OPENAI_CHAT_ONLY marks that
+      # proxy as chat-only so the ingest pre-flight reports OpenAI
+      # embeddings as unavailable instead of failing mid-run.
+      OPENAI_BASE_URL: ${OPENAI_BASE_URL:-}
+      NOTESCI_OPENAI_CHAT_ONLY: ${NOTESCI_OPENAI_CHAT_ONLY:-false}
+
+      # Admin endpoints (workspace bootstrap).
+      NOTESCI_ADMIN_TOKEN: ${NOTESCI_ADMIN_TOKEN:?admin token is required}
+
+      # Email — log (default) or smtp. Configure via the NOTESCI_SMTP_* env.
+      NOTESCI_EMAIL_BACKEND: ${NOTESCI_EMAIL_BACKEND:-log}
+      NOTESCI_SMTP_HOST: ${NOTESCI_SMTP_HOST:-}
+      NOTESCI_SMTP_PORT: ${NOTESCI_SMTP_PORT:-587}
+      NOTESCI_SMTP_USER: ${NOTESCI_SMTP_USER:-}
+      NOTESCI_SMTP_PASSWORD: ${NOTESCI_SMTP_PASSWORD:-}
+      NOTESCI_SMTP_STARTTLS: ${NOTESCI_SMTP_STARTTLS:-true}
+      NOTESCI_EMAIL_FROM_INVITE: ${NOTESCI_EMAIL_FROM_INVITE:-hello@notesci.com}
+      NOTESCI_EMAIL_FROM_SECURITY: ${NOTESCI_EMAIL_FROM_SECURITY:-security@notesci.com}
+      NOTESCI_APP_BASE_URL: ${NOTESCI_APP_BASE_URL:-https://your-domain.example}
+
+      NOTESCI_SWEEP_INTERVAL_SECONDS: ${NOTESCI_SWEEP_INTERVAL_SECONDS:-3600}
+
+      # PageIndex tree-build — see .env.prod.example for tradeoffs.
+      NOTESCI_PAGETREE_ENABLED: ${NOTESCI_PAGETREE_ENABLED:-false}
+      NOTESCI_PAGETREE_MAX_PAGES: ${NOTESCI_PAGETREE_MAX_PAGES:-200}
+      NOTESCI_PAGETREE_MODEL: ${NOTESCI_PAGETREE_MODEL:-}
+    # No host port published — only the frontend container reaches it.
+    # Readiness probe — `/readyz` returns 200 only when the DB pool is
+    # open and the LangGraph checkpointer has migrated. Compose uses this
+    # to gate the frontend's `depends_on` so we never route traffic at a
+    # half-booted backend. `curl` is present in the runtime image (see
+    # backend/Dockerfile); fall back to a stdlib Python one-liner if a
+    # future slim image drops it.
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/readyz"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 120s
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    depends_on:
+      backend:
+        condition: service_healthy
+    ports:
+      - "${FRONTEND_PORT:-8080}:80"
+
+volumes:
+  notesci-pgdata:
+    driver: local

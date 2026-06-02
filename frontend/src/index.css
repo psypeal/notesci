@@ -1,0 +1,1768 @@
+@import "tailwindcss";
+
+/*
+ * notesci brand tokens — sourced from
+ * `notesci/design_handoff_notesci_logo/snippets/tokens.css`. Locked.
+ */
+@theme {
+  --color-ink: #0e1116;
+  --color-paper: #f6f4ef;
+  --color-paper-2: #efece5;
+  --color-rule: rgba(14, 17, 22, 0.12);
+  --color-muted: rgba(14, 17, 22, 0.55);
+
+  --color-indigo: oklch(0.52 0.22 274);
+  --color-teal: oklch(0.62 0.14 195);
+  --color-violet: oklch(0.55 0.22 305);
+
+  --color-success: oklch(0.62 0.14 195);
+  --color-warn: oklch(0.72 0.16 60);
+  --color-error: oklch(0.55 0.20 25);
+
+  --font-sans: "Inter Tight", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  --font-serif: "Source Serif 4", Georgia, "Times New Roman", serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Consolas, monospace;
+}
+
+@theme {
+  /* Glass tokens — hybrid chrome-only treatment.
+   * Chrome only: sidebars, top bar, composer wrapper.
+   * Never applied to message bubbles or reading surfaces.
+   * Built on warm-paper palette — no cold pure-white panels. */
+
+  /* Tint fills — paper-based, two intensities */
+  --color-glass-bg: color-mix(in oklch, var(--color-paper) 70%, transparent);
+  --color-glass-bg-strong: color-mix(in oklch, var(--color-paper) 82%, transparent);
+
+  /* Hairline borders — brand-tinted, leaning toward indigo */
+  --color-glass-border: color-mix(in oklch, var(--color-indigo) 14%, color-mix(in oklch, white 60%, var(--color-rule-2)));
+  --color-glass-border-soft: color-mix(in oklch, var(--color-indigo) 8%, color-mix(in oklch, white 70%, var(--color-rule)));
+
+  /* Bubble hairlines — from Proposal B, for "landing" message cards on the wash */
+  --color-bubble-border-soft: color-mix(in oklch, white 80%, var(--color-rule));
+  --color-bubble-border-user: color-mix(in oklch, var(--color-indigo) 22%, color-mix(in oklch, white 75%, var(--color-rule)));
+
+  /* Wash accents — slightly louder than A so brand reads through chrome */
+  --color-wash-teal: color-mix(in oklch, var(--color-teal) 12%, transparent);
+  --color-wash-indigo: color-mix(in oklch, var(--color-indigo) 12%, transparent);
+  --color-wash-teal-bright: color-mix(in oklch, var(--color-teal) 8%, transparent);
+}
+
+:root {
+  /* Blur recipes — conservative; chrome only. Two intensities. */
+  --glass-blur: blur(14px) saturate(135%);
+  --glass-blur-strong: blur(18px) saturate(150%);
+}
+
+html,
+body,
+#root {
+  background-color: var(--color-paper);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+  margin: 0;
+  min-height: 100vh;
+}
+
+body {
+  /* Brand wash — three radial gradients. `background-attachment: fixed`
+   * is load-bearing: anchors the wash so backdrop-filter on chrome
+   * produces real refraction as content scrolls. */
+  background-image:
+    radial-gradient(ellipse 70% 50% at 15% -10%, var(--color-wash-teal), transparent 60%),
+    radial-gradient(ellipse 60% 45% at 95% 8%, var(--color-wash-indigo), transparent 65%),
+    radial-gradient(ellipse 90% 50% at 50% 115%, var(--color-wash-teal-bright), transparent 70%);
+  background-attachment: fixed;
+}
+
+/* Plain theme: drops the warm paper tint for a flatter, library-like
+ * surface. Overrides the warm paper-2 accents in chrome and inputs. */
+html[data-theme='plain'] {
+  --color-paper: #ffffff;
+  --color-paper-2: #f4f4f5;
+  --color-paper-3: #ececef;
+  /* Plain theme: cut wash in half so chrome reads as near-flat */
+  --color-wash-teal: color-mix(in oklch, var(--color-teal) 6%, transparent);
+  --color-wash-indigo: color-mix(in oklch, var(--color-indigo) 6%, transparent);
+  --color-wash-teal-bright: color-mix(in oklch, var(--color-teal) 4%, transparent);
+}
+
+/* Compact density: tightens row paddings + group labels. */
+html[data-density='compact'] .row {
+  padding-top: 4px;
+  padding-bottom: 4px;
+}
+html[data-density='compact'] .lrow {
+  padding-top: 8px;
+  padding-bottom: 8px;
+}
+html[data-density='compact'] .group-label {
+  padding-top: 6px;
+  padding-bottom: 4px;
+}
+
+/* Skip-to-content: visually hidden until focused. Lets keyboard users
+ * jump past the topbar to the page's <main> on the first Tab. */
+.skip-to-content {
+  position: absolute;
+  left: 12px;
+  top: 12px;
+  padding: 8px 14px;
+  background: var(--color-ink);
+  color: var(--color-paper);
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 500;
+  z-index: 1000;
+  text-decoration: none;
+  transform: translateY(-200%);
+  transition: transform 0.15s;
+}
+.skip-to-content:focus {
+  transform: translateY(0);
+}
+
+/* Visually-hidden but kept in the AT tree. Use for landmark labels and
+ * skip-link targets that don't need a visual rendering. */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+/* ---- AuthLayout form column ----
+ * Lockup at top, form vertically centered, footer at bottom — same
+ * top/middle/bottom rhythm as the right-side hero. Two flex-grow
+ * spacers around the form distribute slack when the form is shorter
+ * than the viewport; they collapse to a min gap when the form is
+ * taller (so a long form like /sign-in or /claim never gets clipped
+ * under the lockup). Inner box capped at 380px per V1 Editorial.
+ */
+.form-column {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+  padding: 56px 72px;
+}
+.form-column-header,
+.form-column-main,
+.form-column > footer {
+  flex: 0 0 auto;
+}
+.form-column-spacer {
+  flex: 1 1 0;
+  min-height: 32px;
+}
+.form-column-main {
+  width: 100%;
+  max-width: 380px;
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
+}
+@media (max-width: 1023px) {
+  .form-column {
+    padding: 32px 28px;
+  }
+  .form-column-spacer {
+    min-height: 20px;
+  }
+}
+
+/* ---- Workspace TopBar responsive collapse ----
+ * The 48px-tall workspace top bar packs Mark + sidebar toggle + project
+ * switcher + layout pill + ⌘K search + invite + share + new-session +
+ * avatar. Below 1240px we shrink the search width and start hiding the
+ * less-load-bearing labels so nothing escapes off-screen. The Mark,
+ * sidebar toggle, project name, layout pill, "+ New session" button,
+ * and avatar are always shown — they're the navigational essentials.
+ */
+@media (max-width: 1240px) {
+  .ws-topbar-search { max-width: 360px !important; }
+  .ws-topbar-invite-count { display: none; }
+  .ws-topbar-invite-divider { display: none; }
+}
+@media (max-width: 1080px) {
+  .ws-topbar-search { max-width: 280px !important; }
+  .ws-topbar-share .ws-topbar-btn-label { display: none; }
+  .ws-topbar-kbd { display: none; }
+}
+@media (max-width: 920px) {
+  .ws-topbar-search { max-width: 200px !important; }
+  .ws-topbar-new .ws-topbar-btn-label { display: none; }
+  .ws-topbar-project-name { max-width: 120px !important; }
+}
+
+/* ---- Form primitives (ported verbatim from notesci-signin.html) ---- */
+
+input.ns-input,
+textarea.ns-input {
+  width: 100%;
+  padding: 12px 14px;
+  border: 1px solid var(--color-rule);
+  border-radius: 10px;
+  font: inherit;
+  font-size: 14px;
+  background: #fff;
+  color: var(--color-ink);
+  outline: none;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+input.ns-input:focus,
+textarea.ns-input:focus {
+  border-color: var(--color-indigo);
+  box-shadow: 0 0 0 3px color-mix(in oklch, var(--color-indigo) 22%, transparent);
+}
+
+input.ns-input::placeholder,
+textarea.ns-input::placeholder {
+  color: rgba(14, 17, 22, 0.4);
+}
+
+/* Shared search bar — used by SidePanel, DraftLibrary, MCP
+ * marketplace. Fixed height + icon-inside-pill so all surfaces
+ * read as the same primitive. */
+.ns-search {
+  position: relative;
+}
+.ns-search-icon {
+  position: absolute;
+  left: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--color-muted);
+  display: inline-flex;
+  pointer-events: none;
+  z-index: 1;
+}
+input.ns-search-input.ns-input {
+  height: 38px;
+  padding: 0 14px 0 34px;
+  font-size: 13.5px;
+  line-height: 1;
+  background: #fff;
+  border-radius: 999px;
+}
+
+/* Ingestion progress — animated pill + per-row spinner. The pulse drives
+ * the active step on the stepper bar; the spin keeps the leading
+ * indicator obviously alive while the pipeline is running. */
+@keyframes ns-ingestion-pulse {
+  0%, 100% { opacity: 0.55; }
+  50%      { opacity: 1; }
+}
+@keyframes ns-ingestion-spin {
+  to { transform: rotate(360deg); }
+}
+@keyframes ns-ingestion-dot {
+  0%, 100% { transform: scale(0.85); opacity: 0.45; }
+  50%      { transform: scale(1.15); opacity: 1; }
+}
+.ns-ingestion-spin {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  border: 2px solid color-mix(in oklch, var(--color-indigo) 35%, transparent);
+  border-top-color: var(--color-indigo);
+  animation: ns-ingestion-spin 0.9s linear infinite;
+}
+.ns-ingestion-pill {
+  transition: box-shadow 0.25s ease, transform 0.25s ease;
+}
+.ns-ingestion-pill.is-ready {
+  border-color: color-mix(in oklch, var(--color-teal) 60%, var(--color-rule));
+  box-shadow: 0 0 0 3px color-mix(in oklch, var(--color-teal) 14%, transparent),
+              0 16px 32px -8px rgba(14,17,22,0.12);
+}
+.ns-ingestion-pill.is-failed {
+  border-color: color-mix(in oklch, var(--color-error) 55%, var(--color-rule));
+}
+.ns-ingesting-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--color-indigo);
+  animation: ns-ingestion-dot 1.1s ease-in-out infinite;
+  flex-shrink: 0;
+}
+
+input.ns-input.error,
+textarea.ns-input.error {
+  border-color: var(--color-error);
+  box-shadow: 0 0 0 3px color-mix(in oklch, var(--color-error) 18%, transparent);
+}
+
+input.ns-input.mono,
+textarea.ns-input.mono {
+  font-family: var(--font-mono);
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+}
+
+.ns-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 12px 16px;
+  border-radius: 10px;
+  border: 1px solid var(--color-ink);
+  background: var(--color-ink);
+  color: var(--color-paper);
+  font: inherit;
+  font-weight: 500;
+  font-size: 14px;
+  cursor: pointer;
+  transition: transform 0.08s, box-shadow 0.15s;
+}
+
+.ns-btn:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
+}
+
+.ns-btn:focus-visible {
+  outline: 3px solid color-mix(in oklch, var(--color-indigo) 55%, transparent);
+  outline-offset: 2px;
+}
+
+/* Generic focus-visible for any other interactive element that doesn't
+ * already have a custom focus style. Native buttons/links/divs with
+ * tabIndex pick this up; inputs already have their own border halo. */
+button:focus-visible:not(.ns-btn):not(.ns-input),
+a:focus-visible,
+[role='button']:focus-visible,
+[tabindex]:focus-visible {
+  outline: 3px solid color-mix(in oklch, var(--color-indigo) 55%, transparent);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+.ns-btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.ns-btn.ghost {
+  background: transparent;
+  color: var(--color-ink);
+  border-color: var(--color-rule);
+}
+
+.ns-btn.ghost:hover:not(:disabled) {
+  background: var(--color-paper-2);
+}
+
+.ns-btn.full {
+  width: 100%;
+}
+
+.divider {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  color: var(--color-muted);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  font-family: var(--font-mono);
+}
+
+.divider::before,
+.divider::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: var(--color-rule);
+}
+
+/* ---- Workspace primitives (ported from notesci-workspace.html) ---- */
+
+@theme {
+  --color-paper-3: #e9e6df;
+  --color-ink-2: rgba(14, 17, 22, 0.78);
+  --color-rule-2: rgba(14, 17, 22, 0.18);
+  --color-indigo-soft: color-mix(in oklch, oklch(0.52 0.22 274) 14%, white);
+}
+
+.pane {
+  display: flex;
+  flex-direction: column;
+  background: #fff;
+  border: 1px solid var(--color-rule);
+  border-radius: 12px;
+  overflow: hidden;
+  min-width: 0;
+}
+
+.pane-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 14px;
+  background: #fff;
+  border-bottom: 1px solid var(--color-rule);
+  flex-shrink: 0;
+  /* Lock to a single height so split panes line up across the page,
+   * regardless of how many lines of metadata or how wide the toolbar
+   * is. Header content must size itself within this box (no
+   * flex-wrap, no multi-line title blocks growing the header). */
+  height: 56px;
+  min-height: 56px;
+  box-sizing: border-box;
+  flex-wrap: nowrap;
+  overflow: hidden;
+}
+
+.pane-title {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.1em;
+  color: var(--color-muted);
+  text-transform: uppercase;
+}
+
+.pane-body {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+}
+
+/* Graph node hover — subtle, premium "lift" on the visible disc.
+ * We scale only the inner content (transform-origin: center via the
+ * native translate position), not the wrapping <g> whose transform
+ * already carries the layout coordinates. The transition is short
+ * enough to feel direct, long enough to read as polish. */
+.ws-graph-node > circle:not([fill="none"]) {
+  transition: transform 160ms ease, filter 160ms ease;
+  transform-box: fill-box;
+  transform-origin: center;
+}
+.ws-graph-node:hover > circle:not([fill="none"]) {
+  transform: scale(1.06);
+}
+.ws-graph-node:hover {
+  filter: brightness(1.02);
+}
+/* Keyboard focus — the default UA outline on an SVG <g> renders as an
+ * ugly square box. Suppress it and lean on the same content-scale the
+ * hover state uses, plus a brightness lift, so Tab-focus reads as a
+ * deliberate highlight consistent with mouse hover. */
+.ws-graph-node:focus {
+  outline: none;
+}
+.ws-graph-node:focus-visible {
+  outline: none;
+  filter: brightness(1.04);
+}
+.ws-graph-node:focus-visible > circle:not([fill="none"]) {
+  transform: scale(1.08);
+}
+
+/* Graph canvas entry — runs once when the SVG mounts (or remounts on
+ * a mode/data change keyed via React). Quick fade-in so switching
+ * lenses feels intentional, not snappy. */
+@keyframes ws-graph-canvas-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+.ws-graph-canvas {
+  animation: ws-graph-canvas-in 260ms ease both;
+}
+
+/* Invite-row hover — the row reads as interactive without being
+ * heavy. We only tint available rows; used ones (sent / claimed /
+ * expired) stay quiet since their action is done. */
+.invite-row {
+  position: relative;
+}
+.invite-row:not([data-composing]):not([data-used]):hover {
+  background: color-mix(in oklch, var(--color-paper-2) 50%, white);
+}
+.invite-row:focus-within {
+  background: color-mix(in oklch, var(--color-indigo) 4%, white);
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  border-radius: 6px;
+  color: var(--color-ink-2);
+}
+
+.row:hover {
+  background: rgba(14, 17, 22, 0.04);
+}
+
+.row.active {
+  background: var(--color-paper-2);
+  color: var(--color-ink);
+}
+
+.tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  padding: 2px 7px;
+  border-radius: 999px;
+  border: 1px solid var(--color-rule);
+  color: var(--color-ink-2);
+  background: transparent;
+  white-space: nowrap;
+}
+
+.tag.solid {
+  background: var(--color-ink);
+  color: var(--color-paper);
+  border-color: var(--color-ink);
+}
+
+.cite {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 2px;
+  padding: 1px 6px;
+  margin: 0 2px;
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.04em;
+  color: var(--color-indigo);
+  background: var(--color-indigo-soft);
+  border: 1px solid color-mix(in oklch, var(--color-indigo) 18%, transparent);
+  border-radius: 4px;
+  cursor: pointer;
+  font-weight: 500;
+  transition: background 120ms ease, color 120ms ease, border-color 120ms ease,
+    box-shadow 120ms ease;
+}
+.cite:hover:not(:disabled) {
+  background: var(--color-indigo);
+  color: #fff;
+  border-color: var(--color-indigo);
+  box-shadow: 0 1px 4px rgba(14, 17, 22, 0.12);
+}
+.cite:focus-visible {
+  outline: 2px solid var(--color-indigo);
+  outline-offset: 2px;
+}
+.cite:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+/* When the reader pane receives a target chunk from a citation click,
+ * the host adds [data-reader-pulse] to flash a subtle indigo halo so
+ * the user has visual confirmation that the citation landed. */
+@keyframes ns-reader-pulse {
+  0% { box-shadow: inset 0 0 0 0 color-mix(in oklch, var(--color-indigo) 30%, transparent); }
+  30% { box-shadow: inset 0 0 0 4px color-mix(in oklch, var(--color-indigo) 30%, transparent); }
+  100% { box-shadow: inset 0 0 0 0 color-mix(in oklch, var(--color-indigo) 0%, transparent); }
+}
+[data-reader-pulse='true'] {
+  animation: ns-reader-pulse 1.2s ease;
+}
+
+.meta {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  color: var(--color-muted);
+  letter-spacing: 0.04em;
+}
+
+.count {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--color-muted);
+  letter-spacing: 0.06em;
+  margin-left: auto;
+  background: var(--color-paper-2);
+  padding: 1px 6px;
+  border-radius: 999px;
+}
+
+.group-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 14px 6px;
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.08em;
+  color: var(--color-muted);
+  text-transform: uppercase;
+}
+
+.splitter-v {
+  width: 1px;
+  background: var(--color-rule);
+  flex-shrink: 0;
+}
+
+.splitter-h {
+  height: 1px;
+  background: var(--color-rule);
+  flex-shrink: 0;
+}
+
+/* Draggable splitter — wider hit-target (set inline) with a 1px rule
+ * drawn via ::after so the visual still matches the static splitters. */
+.ns-splitter {
+  background: transparent;
+  outline: none;
+}
+.ns-splitter::after {
+  content: '';
+  position: absolute;
+  background: var(--color-rule);
+  transition: background 0.12s;
+}
+.ns-splitter[data-direction='vertical']::after {
+  top: 0;
+  bottom: 0;
+  left: 50%;
+  width: 1px;
+  transform: translateX(-50%);
+}
+.ns-splitter[data-direction='horizontal']::after {
+  left: 0;
+  right: 0;
+  top: 50%;
+  height: 1px;
+  transform: translateY(-50%);
+}
+/* Subtle highlight on hover/focus/active so the user knows it's a control. */
+.ns-splitter:hover::after,
+.ns-splitter:focus-visible::after,
+.ns-splitter:active::after {
+  background: var(--color-indigo);
+}
+.ns-splitter[data-direction='vertical']:hover::after,
+.ns-splitter[data-direction='vertical']:focus-visible::after,
+.ns-splitter[data-direction='vertical']:active::after {
+  width: 3px;
+}
+.ns-splitter[data-direction='horizontal']:hover::after,
+.ns-splitter[data-direction='horizontal']:focus-visible::after,
+.ns-splitter[data-direction='horizontal']:active::after {
+  height: 3px;
+}
+
+/* When a side is folded, the splitter widens into a visible strip
+ * with a soft paper background so the user can see + click the
+ * "expand" chevron. The 1px ::after rule still draws to keep the
+ * connection to the page chrome. */
+.ns-splitter[data-collapsed='first'],
+.ns-splitter[data-collapsed='second'] {
+  background: var(--color-paper);
+  border-left: 1px solid var(--color-rule);
+  border-right: 1px solid var(--color-rule);
+}
+.ns-splitter[data-collapsed][data-direction='horizontal'] {
+  border-left: none;
+  border-right: none;
+  border-top: 1px solid var(--color-rule);
+  border-bottom: 1px solid var(--color-rule);
+}
+.ns-splitter[data-collapsed]::after {
+  display: none; /* the strip itself is the divider when collapsed */
+}
+
+/* Fold button — always visible so the affordance is discoverable
+ * without first hovering the thin splitter line. Subtle by default,
+ * brighter on hover/focus. */
+.ns-splitter-fold {
+  opacity: 0.7;
+  transition: opacity 0.12s, color 0.12s, border-color 0.12s,
+    box-shadow 0.12s;
+}
+.ns-splitter:hover .ns-splitter-fold,
+.ns-splitter:focus-visible .ns-splitter-fold,
+.ns-splitter-fold:hover,
+.ns-splitter-fold:focus-visible,
+.ns-splitter[data-collapsed] .ns-splitter-fold {
+  opacity: 1;
+}
+.ns-splitter-fold:hover {
+  color: var(--color-indigo) !important;
+  border-color: var(--color-indigo) !important;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1) !important;
+}
+
+/* Premium starter cards on the Default empty hero. */
+.ns-starter-card:hover,
+.ns-starter-card:focus-visible {
+  border-color: var(--color-indigo) !important;
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.06);
+  transform: translateY(-1px);
+}
+.ns-starter-card:focus-visible {
+  outline: 2px solid var(--color-indigo);
+  outline-offset: 2px;
+}
+
+/* Drafts library entries — same elevation pattern as the starter
+ * cards above. List-view rows use a flatter hover (no transform) so
+ * the row table doesn't flinch when the cursor passes over. */
+.ns-draft-card:hover,
+.ns-draft-card:focus-visible {
+  border-color: var(--color-indigo) !important;
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.06);
+  transform: translateY(-1px);
+}
+.ns-draft-card:focus-visible {
+  outline: 2px solid var(--color-indigo);
+  outline-offset: 2px;
+}
+.ns-draft-row:hover,
+.ns-draft-row:focus-visible {
+  background: var(--color-paper-2) !important;
+}
+.ns-draft-row:focus-visible {
+  outline: 2px solid var(--color-indigo);
+  outline-offset: -2px;
+}
+
+/* Per-entry rename/delete buttons — hidden by default, revealed on
+ * hover/focus so the card/row visual stays clean until the user
+ * intends to act. */
+.ns-draft-actions {
+  opacity: 0;
+  transition: opacity 0.12s;
+}
+.ns-draft-card:hover .ns-draft-actions,
+.ns-draft-card:focus-within .ns-draft-actions,
+.ns-draft-row:hover .ns-draft-actions,
+.ns-draft-row:focus-within .ns-draft-actions {
+  opacity: 1;
+}
+.ns-draft-action {
+  padding: 4px 6px !important;
+}
+
+/* Red-tinted danger affordance used by Delete buttons. Default state
+ * stays neutral so the row doesn't scream — only on hover does the
+ * intent become visible. */
+.ns-danger-btn:hover {
+  color: var(--color-error) !important;
+  border-color: color-mix(in oklch, var(--color-error) 35%, transparent) !important;
+}
+
+/* Editor title input feels editable: underline appears on hover/focus
+ * so users know they can rename in place. */
+.ns-draft-title-input:hover {
+  border-bottom-color: var(--color-rule) !important;
+}
+.ns-draft-title-input:focus {
+  border-bottom-color: var(--color-indigo) !important;
+}
+
+/* Inline slash-command syntax highlighting. The mirror div paints
+ * the textarea's text with token styling; the textarea below is
+ * rendered with transparent text but a visible caret so the user
+ * still types into a real <textarea>. */
+.ns-slash-mirror {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
+  word-wrap: break-word;
+  overflow: hidden;
+  margin: 0;
+  box-sizing: border-box;
+  /* Font, line-height, padding inherited from the textarea via
+   * inline style props on the SlashMirror call. */
+}
+.ns-slash-token {
+  color: var(--color-indigo);
+  /* Background tint that doesn't add horizontal padding — keeps
+   * cursor alignment with the textarea. */
+  background: color-mix(in oklch, var(--color-indigo) 14%, transparent);
+  border-radius: 3px;
+  font-weight: inherit; /* don't bold — would change kerning */
+}
+.ns-slash-ghost {
+  color: var(--color-muted);
+  font-style: italic;
+}
+.ns-slash-placeholder {
+  color: var(--color-muted);
+}
+
+/* Hide the textarea's actual text content + native placeholder when
+ * a mirror is overlaid. The caret stays visible via `caret-color`. */
+.ns-slash-input {
+  position: relative;
+  z-index: 1;
+  background: transparent;
+  color: transparent;
+  -webkit-text-fill-color: transparent;
+  caret-color: var(--color-ink);
+}
+.ns-slash-input::placeholder {
+  color: transparent;
+  -webkit-text-fill-color: transparent;
+}
+.ns-slash-input::selection {
+  background: color-mix(in oklch, var(--color-indigo) 20%, transparent);
+  color: transparent;
+  -webkit-text-fill-color: transparent;
+}
+.ns-slash-input::-moz-selection {
+  background: color-mix(in oklch, var(--color-indigo) 20%, transparent);
+  color: transparent;
+}
+
+.ns-btn.tiny {
+  padding: 5px 10px;
+  font-size: 12px;
+  border-radius: 8px;
+}
+
+.ns-btn.ghost.tiny {
+  padding: 4px 8px;
+}
+
+@keyframes pulse-dot {
+  0%,
+  100% {
+    opacity: 0.4;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.2);
+  }
+}
+
+@keyframes spin360 {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.spinner {
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  border: 2px solid currentColor;
+  border-top-color: transparent;
+  border-radius: 50%;
+  animation: spin360 0.8s linear infinite;
+  margin-right: 8px;
+  flex-shrink: 0;
+}
+
+/* Honor user's reduced-motion preference — kill non-essential animations
+ * and snap transitions. The spinner stays a slow rotation so users still
+ * have a "loading" cue, just without the dizzying speed. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+  .spinner {
+    animation-duration: 1.6s !important;
+    animation-iteration-count: infinite !important;
+  }
+}
+
+/* ---- Dashboard primitives (ported from notesci-dashboard.html) ---- */
+
+@theme {
+  --color-muted-2: rgba(14, 17, 22, 0.42);
+}
+
+.avatar {
+  width: 28px;
+  height: 28px;
+  border-radius: 14px;
+  background: var(--color-indigo);
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  font-weight: 600;
+  flex-shrink: 0;
+}
+
+.tag.warn {
+  background: color-mix(in oklch, var(--color-warn) 14%, white);
+  border-color: color-mix(in oklch, var(--color-warn) 35%, transparent);
+  color: oklch(0.45 0.15 60);
+}
+
+.tag.indigo {
+  background: var(--color-indigo-soft);
+  border-color: color-mix(in oklch, var(--color-indigo) 25%, transparent);
+  color: var(--color-indigo);
+}
+
+.tag.danger {
+  background: color-mix(in oklch, var(--color-error) 8%, white);
+  border-color: color-mix(in oklch, var(--color-error) 35%, transparent);
+  color: var(--color-error);
+}
+
+.tag.teal {
+  background: color-mix(in oklch, var(--color-teal) 12%, white);
+  border-color: color-mix(in oklch, var(--color-teal) 35%, transparent);
+  color: oklch(0.42 0.14 195);
+}
+
+.eyebrow {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.1em;
+  color: var(--color-muted);
+  text-transform: uppercase;
+  margin-bottom: 8px;
+}
+
+.title {
+  font-family: var(--font-serif);
+  font-size: 30px;
+  letter-spacing: -0.02em;
+  line-height: 1.15;
+  font-weight: 500;
+  color: var(--color-ink);
+  margin: 0 0 8px;
+}
+
+.desc {
+  font-size: 14px;
+  line-height: 1.55;
+  color: var(--color-ink-2);
+  max-width: 640px;
+}
+
+.section-card {
+  background: #fff;
+  border: 1px solid var(--color-rule);
+  border-radius: 14px;
+  margin-bottom: 18px;
+}
+
+.section-card-header {
+  padding: 14px 18px;
+  border-bottom: 1px solid var(--color-rule);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.section-card-title {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--color-ink);
+  margin: 0;
+}
+
+.section-card-desc {
+  font-size: 12.5px;
+  color: var(--color-muted);
+  margin: 2px 0 0;
+}
+
+.lrow {
+  display: grid;
+  grid-template-columns: 200px 1fr auto;
+  gap: 18px;
+  padding: 14px 18px;
+  border-bottom: 1px solid var(--color-rule);
+  align-items: center;
+}
+
+.lrow:last-child {
+  border-bottom: none;
+}
+
+.lrow-label {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.08em;
+  color: var(--color-muted);
+  text-transform: uppercase;
+}
+
+.lrow-value {
+  font-size: 13.5px;
+  color: var(--color-ink);
+  min-width: 0;
+}
+
+.lrow-help {
+  font-size: 12px;
+  color: var(--color-muted);
+  margin-top: 3px;
+}
+
+/*
+ * Responsive overrides — mobile (≤640px) and tablet (641-1023px).
+ * Hero is hidden by Tailwind's `lg:` (≥1024px). Below that the auth
+ * flow is single-column with the design-handoff's mobile typography
+ * (h1 30px, lockup 18, 32×28 padding, stacked full-width buttons).
+ */
+
+@media (max-width: 1023px) {
+  /* Form-column padding tightens on small screens */
+  .lrow {
+    grid-template-columns: 1fr;
+    gap: 6px;
+  }
+
+  /* Dashboard scaffold: rail becomes top-of-page accordion-ish */
+  .section-card-header {
+    flex-wrap: wrap;
+  }
+}
+
+@media (max-width: 640px) {
+  /* Auth flow editorial scale per flows-mobile.jsx */
+  .auth-h1,
+  .editorial-h1 {
+    font-size: 30px !important;
+  }
+  .editorial-h2 {
+    font-size: 32px !important;
+  }
+  /* Status-frame icon scales down */
+  .status-icon {
+    width: 60px !important;
+    height: 60px !important;
+    font-size: 28px !important;
+  }
+  /* Buttons in status frames stack full-width */
+  .status-actions {
+    flex-direction: column !important;
+    width: 100% !important;
+  }
+  .status-actions .ns-btn {
+    width: 100%;
+  }
+  /* Onboarding 2-col grid collapses */
+  .onboarding-grid {
+    grid-template-columns: 1fr !important;
+  }
+}
+
+/* "Best on a larger screen" callout used by workspace + dashboard */
+.small-screen-notice {
+  display: none;
+}
+
+@media (max-width: 900px) {
+  .small-screen-notice {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    align-items: center;
+    text-align: center;
+    padding: 32px 24px;
+    color: var(--color-muted);
+    font-size: 13.5px;
+    line-height: 1.55;
+    background: var(--color-paper);
+    min-height: 100vh;
+    justify-content: center;
+  }
+  .hide-on-small {
+    display: none !important;
+  }
+}
+
+/* Chat composer — glass treatment.
+ *
+ * The dock is a frosted bar: the conversation scrolls behind it under
+ * a warm-paper-tinted blur. The shell sitting inside is a brighter
+ * translucent pane with a lit top edge + layered shadow, so it reads
+ * as a physical sheet of glass resting on the dock rather than a flat
+ * white box. Colours stay inside the warm-paper palette — no cold
+ * pure-white panels against the cream page. */
+/* Glass chrome utilities — applied to sidebar rails, top bars, expanded panels.
+ * Never apply to message bubbles or reading surfaces. */
+.ns-glass-chrome {
+  background: var(--color-glass-bg);
+  -webkit-backdrop-filter: var(--glass-blur-strong);
+  backdrop-filter: var(--glass-blur-strong);
+}
+
+.ns-glass-chrome-strong {
+  background: var(--color-glass-bg-strong);
+  -webkit-backdrop-filter: var(--glass-blur-strong);
+  backdrop-filter: var(--glass-blur-strong);
+}
+
+.ns-chat-surface {
+  background:
+    linear-gradient(
+      180deg,
+      color-mix(in oklch, var(--color-glass-bg-strong) 82%, transparent),
+      color-mix(in oklch, var(--color-glass-bg) 90%, transparent)
+    ),
+    radial-gradient(
+      circle at 15% -8%,
+      color-mix(in oklch, var(--color-indigo) 18%, transparent) 0%,
+      transparent 48%
+    ),
+    radial-gradient(
+      circle at 88% 12%,
+      color-mix(in oklch, var(--color-indigo) 12%, transparent) 0%,
+      transparent 48%
+    );
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
+  position: relative;
+  overflow: hidden;
+  isolation: isolate;
+  border: 1px solid color-mix(in oklch, var(--color-rule) 24%, transparent);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.52),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.06),
+    0 22px 48px -36px rgba(14, 17, 22, 0.42);
+}
+
+.ns-chat-surface::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: linear-gradient(
+    180deg,
+    color-mix(in oklch, #fff 16%, transparent) 0%,
+    transparent 46%,
+    color-mix(in oklch, #000 8%, transparent) 100%
+  );
+  opacity: 0.14;
+  mix-blend-mode: soft-light;
+  z-index: 0;
+}
+
+.ns-composer-dock {
+  border-top: 1px solid var(--color-glass-border-soft);
+  padding: 12px 22px;
+  background: var(--color-glass-bg);
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
+}
+
+.ns-composer-shell {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 12px;
+  border-radius: 14px;
+  background: linear-gradient(
+    180deg,
+    color-mix(in oklch, white 82%, transparent),
+    color-mix(in oklch, white 58%, transparent)
+  );
+  /* Inner backdrop-filter removed — .ns-composer-dock already
+   * provides one and the inner blur only sees the dock's already-
+   * rasterised tint, wasting a compositor layer for zero visual gain.
+   * The translucent gradient above + the dock's blur underneath
+   * deliver the same effect with one layer instead of two. */
+  border: 1px solid color-mix(in oklch, white 50%, var(--color-rule-2));
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.7),
+    0 1px 2px rgba(14, 17, 22, 0.04),
+    0 10px 28px -12px rgba(14, 17, 22, 0.18);
+  transition: border-color 0.18s ease, box-shadow 0.18s ease;
+  /* Align with the conversation column (.ns-chat-track, 960px) so the
+   * composer sits directly under the messages it answers — a single
+   * vertical column, not two mismatched widths. */
+  max-width: 960px;
+  width: 100%;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+/* Focus-within — the glass "lights up": an indigo halo joins the
+ * existing inset highlight + ambient drop instead of replacing them. */
+.ns-composer-shell:focus-within {
+  border-color: color-mix(in oklch, var(--color-indigo) 55%, transparent);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.65),
+    0 0 0 3px color-mix(in oklch, var(--color-indigo) 16%, transparent),
+    0 10px 28px -12px rgba(14, 17, 22, 0.14);
+}
+
+/* Slash-mode — composer shifts to an indigo-tinted glass when the
+ * input opens with a known /command. */
+.ns-composer-shell[data-slash='true'] {
+  border-color: color-mix(in oklch, var(--color-indigo) 60%, transparent);
+  background: linear-gradient(
+    180deg,
+    color-mix(in oklch, var(--color-indigo) 7%, color-mix(in oklch, white 80%, transparent)),
+    color-mix(in oklch, var(--color-indigo) 4%, color-mix(in oklch, white 56%, transparent))
+  );
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.62),
+    0 0 0 3px color-mix(in oklch, var(--color-indigo) 13%, transparent),
+    0 10px 28px -12px rgba(14, 17, 22, 0.18);
+}
+
+.ns-steady-scroll {
+  /* Keep compositor-level scrolling updates off the main layout path so
+   * wheel movement feels linear and steady. */
+  will-change: scroll-position;
+  contain: paint;
+  overscroll-behavior: contain;
+  scroll-behavior: auto;
+  scrollbar-gutter: stable;
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in oklch, var(--color-indigo) 35%, white) color-mix(in oklch, white 55%, transparent);
+}
+
+/* File/session rows: keep menu affordance hidden until hover/focus and
+ * reveal it without re-layout (width is reserved even when hidden).
+ * This avoids row width jitter while mouse-wheel scrolling keeps the
+ * pointer over the list. */
+.ns-side-file-row {
+  position: relative;
+}
+
+.ns-side-file-row .ns-side-file-menu,
+.ns-side-file-row .ns-side-file-menu button {
+  width: 22px;
+  height: 22px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.ns-side-file-row .ns-side-file-menu {
+  flex-shrink: 0;
+  opacity: 0;
+  visibility: visible;
+  pointer-events: none;
+}
+
+.ns-side-file-row:hover .ns-side-file-menu,
+.ns-side-file-row:focus-within .ns-side-file-menu,
+.ns-side-file-row.active .ns-side-file-menu,
+.ns-side-file-row.is-open .ns-side-file-menu,
+.ns-side-file-row[aria-busy='true'] .ns-side-file-menu {
+  opacity: 1;
+  visibility: visible;
+  pointer-events: auto;
+}
+
+.ns-side-file-row .ns-side-file-menu button {
+  border: none;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--color-muted);
+  cursor: pointer;
+  opacity: 1;
+}
+
+.ns-side-file-row .ns-side-file-menu button:hover {
+  background: rgba(14, 17, 22, 0.06);
+}
+
+.ns-side-file-row .ns-side-file-actions {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.ns-side-file-meta {
+  font-size: 9px;
+  color: var(--color-muted);
+  line-height: 1.3;
+  white-space: nowrap;
+}
+
+.ns-steady-scroll::-webkit-scrollbar {
+  width: 10px;
+}
+
+.ns-steady-scroll::-webkit-scrollbar-track {
+  background: color-mix(in oklch, var(--color-paper-2) 60%, transparent);
+  border-radius: 8px;
+}
+
+.ns-steady-scroll::-webkit-scrollbar-thumb {
+  border-radius: 8px;
+  border: 2px solid color-mix(in oklch, var(--color-paper-2) 70%, transparent);
+  background: color-mix(in oklch, var(--color-indigo) 24%, white);
+}
+
+@supports not (scrollbar-gutter: stable) {
+  .ns-steady-scroll {
+    overflow-y: scroll;
+  }
+}
+
+/* Hover/focus feedback for menu items in popovers (account menu, project
+ * switcher, etc.). Uses a tonal background instead of the brand color so
+ * destructive items keep their red text legible against the highlight. */
+.ns-menu-item:hover,
+.ns-menu-item:focus-visible {
+  background: var(--color-paper-2);
+}
+
+/* pdf.js v5 text-layer styles. The library renders spans / br elements
+ * absolutely positioned over the canvas so users can drag-select the
+ * page text. Without these rules the spans collapse on top of each
+ * other, the cursor doesn't change, and the selection highlight is
+ * invisible — making "select to highlight" feel broken.
+ *
+ * `cursor: text` on the container (not just on spans) makes the
+ * I-beam show across the entire page — including the white space
+ * between glyphs and between lines — so the user feels they can
+ * select anywhere, instead of the cursor flickering between text and
+ * default depending on which span the pointer happens to hit. */
+.textLayer {
+  position: absolute;
+  text-align: initial;
+  inset: 0;
+  overflow: clip;
+  opacity: 1;
+  line-height: 1;
+  --total-scale-factor: var(--scale-factor, 1);
+  --min-font-size: 1;
+  --text-scale-factor: calc(var(--total-scale-factor) * var(--min-font-size));
+  --min-font-size-inv: calc(1 / var(--min-font-size));
+  text-size-adjust: none;
+  forced-color-adjust: none;
+  transform-origin: 0 0;
+  caret-color: CanvasText;
+  /* Native browser text selection on top of pdf.js's TextLayer is the
+   * industry standard (Adobe, Apple Preview, every PDF.js-based reader)
+   * and gives per-glyph precision plus free double-click-word,
+   * triple-click-paragraph, Cmd+C, touch long-press, and screen-reader
+   * support. The earlier marquee experiment was a regression — the
+   * "selection feels rough" reports it tried to fix were actually
+   * cured by the glyph-alignment rules on the span block below
+   * (font-kerning: none, text-rendering: geometricPrecision, etc.),
+   * not by replacing native selection. */
+  cursor: text;
+  user-select: text;
+  -webkit-user-select: text;
+  z-index: 2;
+}
+
+/* During an active drag the consumer adds `.selecting`. pdf.js uses
+ * this to expand the `endOfContent` marker so the browser's selection
+ * range can include text past the last visible span (selecting "to
+ * the end of the line / column" feels much more natural this way). */
+.textLayer.selecting {
+  touch-action: none;
+}
+
+.textLayer :is(span, br) {
+  color: transparent;
+  position: absolute;
+  white-space: pre;
+  cursor: text;
+  transform-origin: 0% 0%;
+  /* Match canvas glyph metrics as closely as possible. WebKitGTK does
+   * its own kerning + sub-pixel positioning on the canvas pass; the
+   * text-layer spans must rely only on the explicit transform pdf.js
+   * computes (font-size + scaleX) and skip the browser's per-character
+   * kerning, or the spans drift a fraction of a pixel away from where
+   * the glyphs visually sit — which is what made the user-visible
+   * "selection lands on the wrong character" feel. */
+  font-kerning: none;
+  font-variant-ligatures: none;
+  font-feature-settings: normal;
+  text-rendering: geometricPrecision;
+  -webkit-font-smoothing: antialiased;
+}
+
+.textLayer > :not(.markedContent),
+.textLayer .markedContent span:not(.markedContent) {
+  z-index: 1;
+  --font-height: 0;
+  --scale-x: 1;
+  --rotate: 0deg;
+  font-size: calc(var(--text-scale-factor) * var(--font-height));
+  transform: rotate(var(--rotate)) scaleX(var(--scale-x)) scale(var(--min-font-size-inv));
+}
+
+.textLayer .markedContent {
+  display: contents;
+}
+
+/* While the user is drag-selecting, neutralise pointer-events on
+ * expanded overlay cards/popovers so the drag can't be intercepted by
+ * an absolutely-positioned cousin of the text-layer.
+ * The textLayer already has ``z-index: 2``; pointer-events: none on
+ * these siblings during selection keeps the gesture pinned to the
+ * spans beneath. Sticky note markers stay clickable; otherwise a
+ * stale `.selecting` class can make notes impossible to reopen. */
+body:has(.textLayer.selecting) [data-notesci-popover],
+body:has(.textLayer.selecting) [data-notesci-note-card] {
+  pointer-events: none !important;
+}
+
+.textLayer span.markedContent {
+  top: 0;
+  height: 0;
+}
+
+.textLayer .endOfContent {
+  display: block;
+  position: absolute;
+  inset: 100% 0 0;
+  z-index: 0;
+  cursor: default;
+  user-select: none;
+}
+
+.textLayer.selecting .endOfContent {
+  top: 0;
+}
+
+/* Hide the native ::selection painter on the pdf text layer.
+ *
+ * pdf.js spans are absolutely-positioned at the glyph baseline, but
+ * their CSS bounding box extends across the entire em-square (font
+ * ascent + descent + line-height padding). Painting the native
+ * background-color on that box made the highlight visibly extend above
+ * and below the actual glyphs — the "selection goes out of range" feel.
+ *
+ * Instead we render a pixel-tight overlay from measured text-node
+ * character edges — see ``ns-pdf-selection-layer`` and the
+ * selectionchange handler in PdfPage. Native selection still drives
+ * caret placement + Cmd+C; the overlay is purely visual. */
+.textLayer ::selection,
+.textLayer span::selection {
+  background-color: transparent;
+  color: transparent;
+}
+
+/* Custom pixel-tight selection rects. Painted from measured text-node
+ * character edges, skipping the span em-box padding that was making
+ * native ::selection look loose. Pointer-events: none so the user can
+ * still re-anchor a selection through the painted halo. */
+.ns-pdf-selection-layer {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 4;
+}
+.ns-pdf-selection-rect {
+  position: absolute;
+  background-color: color-mix(in oklch, var(--color-indigo) 20%, transparent);
+  border-radius: 2px;
+  mix-blend-mode: multiply;
+}
+
+/* PdfReader scroll container — pairs with the `pdf-scroll-container`
+ * className on the scrollable wrapper inside PdfReader.tsx. The
+ * inline style uses `scrollbar-gutter: stable` to keep the canvas
+ * width steady regardless of whether the vertical scrollbar is
+ * showing; that prevents the fit-width render loop from flickering on
+ * ancestor reflows (see the long comment in PdfReader.tsx around the
+ * scroll container for context). `scrollbar-gutter` landed in Safari
+ * 18.2 — for older WebKit we fall back to `overflow-y: scroll` so the
+ * scrollbar is always painted and `clientWidth` is therefore stable
+ * by the same mechanism. */
+@supports not (scrollbar-gutter: stable) {
+  .pdf-scroll-container {
+    overflow-y: scroll;
+  }
+}
+
+/* ---------------------------------------------------------------------------
+ * Chat message rendering — shared by General (pages/General.tsx) and
+ * Project chat (components/workspace/ChatPane.tsx) so both surfaces read
+ * identically. Editorial-premium: a tight reading column, the user's turn
+ * in a soft indigo-tinted card pinned to the right, the AI's reply as a
+ * clean full-width serif body signed with the notesci mark.
+ * ------------------------------------------------------------------------- */
+
+/* Full-width scroll host. The scrollbar belongs at the pane/page edge,
+ * not at the edge of the centered reading column. */
+.ns-chat-scroll {
+  width: 100%;
+  max-width: none;
+  margin-left: 0;
+  margin-right: 0;
+}
+
+/* Conversation column — the reading track both surfaces center on. Wider
+ * than the original 720px so research answers and tables can use more of
+ * the page while the actual scroll container still spans edge-to-edge. */
+.ns-chat-track {
+  max-width: 960px;
+  width: 100%;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+/* User turn — right-aligned editorial pull-quote. No card, no fill, no
+ * box: the message is plain text, distinguished by right alignment, an
+ * indigo-capped hairline rule, and italic serif so question and answer
+ * share one voice. Glass effects live on the interface background +
+ * chrome (topbar / sidebar / composer), never on the message itself. */
+.ns-chat-user {
+  display: flex;
+  justify-content: flex-end;
+  animation: ns-msg-in 0.34s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+.ns-chat-user-inner {
+  display: flex;
+  align-items: stretch;
+  gap: 16px;
+  max-width: 80%;
+}
+.ns-chat-user-rule {
+  width: 1px;
+  flex-shrink: 0;
+  align-self: stretch;
+  background: linear-gradient(
+    180deg,
+    var(--color-indigo) 0%,
+    var(--color-indigo) 14%,
+    var(--color-rule-2) 14%,
+    var(--color-rule-2) 100%
+  );
+}
+.ns-chat-user-body {
+  font-family: var(--font-serif);
+  font-size: 14.5px;
+  line-height: 1.45;
+  font-style: italic;
+  font-weight: 500;
+  letter-spacing: -0.005em;
+  color: var(--color-ink);
+  text-wrap: pretty;
+  white-space: pre-wrap;
+}
+
+/* AI turn — full-width serif reading body. Bumped to 15px / 1.68 line
+ * height from the old 14.5 / 1.6 for a calmer, more premium read. */
+.ns-chat-ai {
+  width: 100%;
+  animation: ns-msg-in 0.34s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+.ns-chat-ai-body {
+  font-size: 15px;
+  line-height: 1.68;
+  color: var(--color-ink);
+}
+
+/* notesci signature under the turn's final AI reply. */
+.ns-chat-sig {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 7px;
+  margin-top: 14px;
+  opacity: 0.65;
+}
+
+/* Gentle entrance — only NEW message nodes animate (stable React keys mean
+ * existing nodes don't re-mount). GPU-cheap opacity + transform. */
+@keyframes ns-msg-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ns-chat-user,
+  .ns-chat-ai {
+    animation: none;
+  }
+}
+
+/* ---------------------------------------------------------------------------
+ * Markdown body — styles for rendered AI chat output (see lib/markdown.tsx).
+ * Scoped under `.md-body` so it never leaks into other serif surfaces.
+ * The body text inherits the parent's font-serif / size / color; only the
+ * block rhythm, headings, code, lists, links + quotes are styled here.
+ * ------------------------------------------------------------------------- */
+.md-body > *:first-child { margin-top: 0; }
+.md-body > *:last-child { margin-bottom: 0; }
+
+.md-body .md-p {
+  margin: 0 0 10px;
+}
+
+.md-body .md-h {
+  font-family: var(--font-serif);
+  font-weight: 600;
+  line-height: 1.3;
+  letter-spacing: -0.01em;
+  color: var(--color-ink);
+  margin: 16px 0 7px;
+}
+.md-body h3.md-h { font-size: 16px; }
+.md-body h4.md-h { font-size: 14.5px; }
+.md-body h5.md-h { font-size: 13px; }
+
+.md-body .md-list {
+  margin: 0 0 10px;
+  padding-left: 22px;
+}
+.md-body .md-list li {
+  margin: 3px 0;
+}
+
+.md-body .md-code {
+  font-family: var(--font-mono);
+  font-size: 0.86em;
+  background: var(--color-paper-2);
+  border: 1px solid color-mix(in oklch, var(--color-rule) 70%, transparent);
+  padding: 0.5px 5px;
+  border-radius: 4px;
+  white-space: pre-wrap;
+}
+
+.md-body .md-pre {
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  line-height: 1.5;
+  background: var(--color-paper-2);
+  border: 1px solid var(--color-rule);
+  border-radius: 8px;
+  padding: 10px 12px;
+  margin: 0;
+  overflow-x: auto;
+}
+
+.md-body .md-pre-wrap {
+  position: relative;
+  margin: 0 0 10px;
+}
+
+.md-body .md-copy-btn {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  border: 1px solid color-mix(in oklch, var(--color-rule) 80%, transparent);
+  border-radius: 999px;
+  background: color-mix(in oklch, var(--color-paper) 80%, transparent);
+  color: var(--color-ink);
+  font: 600 11px/1 var(--font-sans);
+  padding: 5px 8px;
+  cursor: pointer;
+  opacity: 0.85;
+  transition: opacity 0.2s ease;
+}
+
+.md-body .md-copy-btn:hover {
+  opacity: 1;
+}
+
+.md-body .md-copy-btn:active {
+  transform: translateY(1px);
+}
+
+.md-body .md-pre code {
+  font-family: inherit;
+  background: none;
+  border: none;
+  padding: 0;
+  white-space: pre;
+}
+
+.md-body .md-link {
+  color: var(--color-indigo);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  text-decoration-thickness: 1px;
+}
+.md-body .md-link:hover {
+  text-decoration-thickness: 2px;
+}
+
+.md-body .md-quote {
+  margin: 0 0 10px;
+  padding: 2px 0 2px 12px;
+  border-left: 2px solid color-mix(in oklch, var(--color-indigo) 35%, var(--color-rule-2));
+  color: var(--color-ink-2);
+  font-style: italic;
+}
+
+.md-body .md-hr {
+  border: none;
+  border-top: 1px solid var(--color-rule);
+  margin: 14px 0;
+}
+
+.md-body .md-table {
+  border-collapse: collapse;
+  width: 100%;
+  margin: 0 0 12px;
+  font-size: 13px;
+  line-height: 1.45;
+}
+.md-body .md-table th,
+.md-body .md-table td {
+  border: 1px solid var(--color-rule);
+  padding: 6px 10px;
+  vertical-align: top;
+}
+.md-body .md-table th {
+  background: var(--color-paper-2);
+  font-weight: 600;
+  color: var(--color-ink);
+}
+.md-body .md-table tbody tr:nth-child(even) td {
+  background: color-mix(in oklch, var(--color-paper-2) 45%, transparent);
+}
+
+.md-body strong { font-weight: 600; }
+.md-body em { font-style: italic; }
+
+/* Glass — accessibility fallbacks.
+ * prefers-reduced-transparency: drop all backdrop-filter, swap to opaque
+ *   paper, flatten the body wash so composites stay predictable.
+ * prefers-reduced-motion: kill composer focus-within transitions. */
+
+@media (prefers-reduced-transparency: reduce) {
+  body {
+    background-image: none;
+  }
+  .ns-glass-chrome,
+  .ns-glass-chrome-strong,
+  .ns-composer-dock {
+    background: var(--color-paper);
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
+  .ns-composer-shell {
+    background: #fff;
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ns-composer-shell {
+    transition: none;
+  }
+}

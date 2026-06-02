@@ -1,0 +1,29 @@
+Package: notesci
+Version: __VERSION__
+Section: web
+Priority: optional
+Architecture: amd64
+Maintainer: notesci maintainers <noreply@notesci.com>
+Homepage: https://notesci.com
+Depends: postgresql (>= 16),
+ postgresql-16-pgvector,
+ python3.12,
+ python3.12-venv,
+ libwebkit2gtk-4.1-0,
+ libsoup-3.0-0,
+ libayatana-appindicator3-1,
+ librsvg2-2,
+ adduser,
+ ca-certificates
+Description: Personal knowledge base for scientific research
+ notesci is a single-user, self-hosted research workspace that grounds
+ chat responses in your own corpus of papers and notes. It speaks to
+ multiple LLM providers (Anthropic, OpenAI, Google, DeepSeek) through
+ one chokepoint and hosts MCP servers for tools you bring yourself.
+ .
+ This package installs notesci as a native desktop application. The
+ Tauri-built binary at /opt/notesci/bin/notesci spawns the Python
+ backend on launch and embeds the React frontend in a native window
+ (via WebKitGTK). Configuration lives in /etc/notesci/notesci.conf.
+ .
+ After install, launch "notesci" from your application menu.

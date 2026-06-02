@@ -1,0 +1,4 @@
+[[permission]]
+identifier = "allow-embed-preview"
+description = "Allows embedding/repositioning the in-app browser preview as a child webview inside the review modal."
+commands.allow = ["embed_preview"]

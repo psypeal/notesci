@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 80" width="240" height="80">
+  
+  <text x="0" y="56" font-family="Inter Tight, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif" font-size="56" letter-spacing="-1.7" fill="#0e1116">
+    <tspan font-weight="600">note</tspan><tspan font-weight="500" fill="rgba(14,17,22,0.55)">sci</tspan>
+  </text>
+</svg>

@@ -1,0 +1,4 @@
+[[permission]]
+identifier = "allow-preview-bytes"
+description = "Allows the hidden loader window to hand its fetched page bytes/text back to notesci."
+commands.allow = ["preview_bytes"]

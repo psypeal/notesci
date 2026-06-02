@@ -1,0 +1,154 @@
+#!/bin/sh
+# notesci postinst — runs after `dpkg -i` extracts the package.
+#
+# Idempotent on purpose: re-running after an upgrade or a failed first
+# install must not break anything that already worked. Every state
+# change checks "is it already done?" first.
+
+set -e
+
+CONFIG_DIR=/etc/notesci
+CONFIG_FILE=$CONFIG_DIR/notesci.conf
+EXAMPLE_FILE=$CONFIG_DIR/notesci.conf.example
+INSTALL_DIR=/opt/notesci
+BACKEND_DIR=$INSTALL_DIR/backend
+VENV=$INSTALL_DIR/venv
+WHEELS_DIR=$INSTALL_DIR/wheels
+NS_USER=notesci
+NS_GROUP=notesci
+DB_NAME=notesci
+DB_USER=notesci
+SYSTEM_PYTHON=/usr/bin/python3.12
+
+log() { echo "notesci: $*"; }
+
+case "$1" in
+  configure)
+    # ── 1. System user + group ──────────────────────────────────
+    if ! getent group "$NS_GROUP" >/dev/null; then
+      log "creating group $NS_GROUP"
+      addgroup --system "$NS_GROUP"
+    fi
+    if ! getent passwd "$NS_USER" >/dev/null; then
+      log "creating system user $NS_USER"
+      adduser --system --ingroup "$NS_GROUP" \
+        --home /nonexistent --no-create-home \
+        --shell /usr/sbin/nologin \
+        --gecos "notesci service account" \
+        "$NS_USER"
+    fi
+
+    # ── 2. Config file ─ first-install only ─────────────────────
+    # Conffiles are managed by dpkg, but on first install we seed
+    # notesci.conf from the example with a freshly generated DB
+    # password and admin token so the operator doesn't have to.
+    if [ ! -f "$CONFIG_FILE" ]; then
+      log "seeding $CONFIG_FILE with generated secrets"
+      DB_PASS=$(head -c 32 /dev/urandom | base64 | tr -d '+/=' | head -c 40)
+      ADMIN_TOKEN=$(head -c 32 /dev/urandom | base64 | tr -d '+/=' | head -c 40)
+      cp "$EXAMPLE_FILE" "$CONFIG_FILE"
+      sed -i \
+        -e "s|__DB_PASSWORD__|$DB_PASS|" \
+        -e "s|__ADMIN_TOKEN__|$ADMIN_TOKEN|" \
+        "$CONFIG_FILE"
+    else
+      # Re-install / upgrade — read existing password so we can sync
+      # it to Postgres below (in case the role was dropped manually).
+      DB_PASS=$(grep -E '^NOTESCI_DB_PASSWORD=' "$CONFIG_FILE" | cut -d= -f2- | tr -d '"')
+    fi
+
+    chown root:"$NS_GROUP" "$CONFIG_FILE"
+    chmod 0640 "$CONFIG_FILE"
+
+    # ── 3. Python venv (created on-target so it uses target's Python) ──
+    # The .deb ships pre-downloaded wheels under /opt/notesci/wheels;
+    # we build the venv here using the target system's Python and
+    # install everything from those wheels offline. This avoids the
+    # cross-host Python-path mismatch that bites bundled venvs:
+    # systemd's ProtectHome=true sandbox hides any /home/... interpreter
+    # that the build host happened to use, leaving the bundled venv
+    # unable to find its own stdlib.
+    if [ ! -x "$SYSTEM_PYTHON" ]; then
+      log "ERROR: $SYSTEM_PYTHON missing — install python3.12 first" >&2
+      exit 1
+    fi
+
+    if [ -d "$VENV" ]; then
+      log "removing existing venv before rebuild"
+      rm -rf "$VENV"
+    fi
+
+    log "creating venv at $VENV"
+    "$SYSTEM_PYTHON" -m venv "$VENV"
+
+    log "installing pip + deps from bundled wheels (offline)"
+    "$VENV/bin/pip" install --quiet --no-index --find-links="$WHEELS_DIR" \
+      --upgrade pip setuptools wheel
+    "$VENV/bin/pip" install --quiet --no-index --find-links="$WHEELS_DIR" \
+      -r "$WHEELS_DIR/requirements.txt"
+
+    # ── 4. Postgres role + database + extension ─────────────────
+    # All three operations are idempotent — running them again on an
+    # upgrade is a no-op except for the ALTER ROLE password sync.
+    if ! systemctl is-active --quiet postgresql; then
+      log "starting postgresql so we can provision the notesci DB"
+      systemctl start postgresql || true
+    fi
+
+    log "ensuring postgres role + database + pgvector extension exist"
+    su - postgres -c "psql -tAc \"SELECT 1 FROM pg_roles WHERE rolname='$DB_USER'\"" \
+      | grep -q 1 \
+      || su - postgres -c "psql -c \"CREATE ROLE $DB_USER LOGIN PASSWORD '$DB_PASS'\""
+
+    # Always sync password — handles config-edit scenarios where the
+    # operator rotated the secret in notesci.conf manually.
+    su - postgres -c "psql -c \"ALTER ROLE $DB_USER WITH PASSWORD '$DB_PASS'\"" >/dev/null
+
+    su - postgres -c "psql -tAc \"SELECT 1 FROM pg_database WHERE datname='$DB_NAME'\"" \
+      | grep -q 1 \
+      || su - postgres -c "psql -c \"CREATE DATABASE $DB_NAME OWNER $DB_USER\""
+
+    su - postgres -c "psql -d $DB_NAME -c 'CREATE EXTENSION IF NOT EXISTS vector'" >/dev/null
+
+    # ── 5. Directory ownership ──────────────────────────────────
+    # Backend reads its own source tree; venv is read-only at runtime.
+    # /var/lib/notesci is for any future runtime state (uploaded
+    # materials' bytes are in the DB right now, but planning ahead).
+    install -d -o "$NS_USER" -g "$NS_GROUP" -m 0755 /var/lib/notesci
+
+    # ── 6. Carry over old systemd unit (transition from web-app .deb) ──
+    # Earlier versions of this package shipped notesci.service. If we're
+    # upgrading from one of those, stop + disable + remove the unit so
+    # users don't end up with a background backend competing with the
+    # one the Tauri app will spawn on its own port.
+    if [ -d /run/systemd/system ] && [ -f /lib/systemd/system/notesci.service ]; then
+      log "removing legacy systemd unit (Tauri app manages backend lifecycle now)"
+      systemctl stop notesci.service 2>/dev/null || true
+      systemctl disable notesci.service 2>/dev/null || true
+      rm -f /lib/systemd/system/notesci.service
+      systemctl daemon-reload
+    fi
+
+    # ── 7. Desktop integration ──────────────────────────────────
+    if command -v update-desktop-database >/dev/null 2>&1; then
+      update-desktop-database -q /usr/share/applications 2>/dev/null || true
+    fi
+    if command -v gtk-update-icon-cache >/dev/null 2>&1; then
+      gtk-update-icon-cache -q -f /usr/share/icons/hicolor 2>/dev/null || true
+    fi
+
+    log "installed. launch 'notesci' from your application menu."
+    log "config: $CONFIG_FILE"
+    log "logs:   the backend logs to the desktop process's stderr (run notesci from a terminal to follow them)"
+    ;;
+
+  abort-upgrade|abort-remove|abort-deconfigure)
+    ;;
+
+  *)
+    echo "postinst called with unknown argument \`$1'" >&2
+    exit 1
+    ;;
+esac
+
+exit 0
