@@ -1,0 +1,134 @@
+#!/usr/bin/env bash
+# fetch-pg.sh — download PostgreSQL 16 binaries for the target OS.
+#
+# Usage: ./fetch-pg.sh OS
+#   where OS is "linux" | "macos" | "windows"
+#
+# Output: build/pg-raw/<OS>/ containing bin/, lib/, share/, ...
+#
+# Sources:
+#   macOS / Windows: EnterpriseDB binary archives (official PG hosting partner).
+#   Linux: extracted from the Ubuntu LTS postgresql-16 .deb so the libc
+#          ABI matches AppImage runtime (glibc 2.35+).
+#
+# Idempotent — re-runs skip the download if the archive already exists.
+
+set -euo pipefail
+
+PG_VERSION="16.4"
+EDB_BASE="https://get.enterprisedb.com/postgresql"
+
+OS="${1:-}"
+if [[ -z "$OS" ]]; then
+    echo "usage: $0 linux|macos|windows" >&2
+    exit 1
+fi
+
+REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
+BUILD="$REPO_ROOT/build/pg-raw"
+mkdir -p "$BUILD"
+DEST="$BUILD/$OS"
+
+log() { printf '\n\033[1m==> %s\033[0m\n' "$*"; }
+
+if [[ -d "$DEST/bin" ]] && [[ -x "$DEST/bin/postgres" || -x "$DEST/bin/postgres.exe" ]]; then
+    log "$OS PG tree already at $DEST — skipping"
+    exit 0
+fi
+
+rm -rf "$DEST"
+mkdir -p "$DEST"
+
+case "$OS" in
+    macos)
+        # EnterpriseDB ships universal2 binaries (x86_64 + arm64).
+        ARCHIVE="postgresql-${PG_VERSION}-1-osx-binaries.zip"
+        URL="$EDB_BASE/$ARCHIVE"
+        log "downloading $URL"
+        curl -fL --retry 3 -o "$BUILD/$ARCHIVE" "$URL"
+        log "extracting"
+        ( cd "$BUILD" && unzip -q -o "$ARCHIVE" )
+        # The zip lays out as `pgsql/{bin,lib,...}` — flatten into $DEST.
+        mv "$BUILD/pgsql"/* "$DEST/"
+        rmdir "$BUILD/pgsql"
+        ;;
+
+    windows)
+        # EnterpriseDB Windows binaries archive.
+        ARCHIVE="postgresql-${PG_VERSION}-1-windows-x64-binaries.zip"
+        URL="$EDB_BASE/$ARCHIVE"
+        log "downloading $URL"
+        curl -fL --retry 3 -o "$BUILD/$ARCHIVE" "$URL"
+        log "extracting"
+        ( cd "$BUILD" && unzip -q -o "$ARCHIVE" )
+        mv "$BUILD/pgsql"/* "$DEST/"
+        rmdir "$BUILD/pgsql"
+        ;;
+
+    linux)
+        # No first-party portable archive for Linux; we extract from the
+        # Ubuntu 22.04 postgresql-16 .deb. The resulting tree is
+        # relocatable as long as the AppImage's libc ABI matches the
+        # build host (we target Ubuntu 22.04, glibc 2.35+).
+        log "extracting from Ubuntu postgresql-16 .deb"
+        need_dpkg() { command -v "$1" >/dev/null || { echo "missing: $1" >&2; exit 1; }; }
+        need_dpkg dpkg-deb
+        need_dpkg apt-get
+
+        TMP="$BUILD/.linux-stage"
+        rm -rf "$TMP" && mkdir -p "$TMP"
+        # `apt-get download` pulls the .deb into cwd without installing.
+        (
+            cd "$TMP"
+            ICU_PKG="$(apt-cache search libicu | awk '$1 ~ /^libicu[0-9]+$/ {print $1}' | sort -V | tail -n 1)"
+            if [[ -z "$ICU_PKG" ]]; then
+                echo "failed to resolve ICU package (expected libicu<version>)" >&2
+                exit 1
+            fi
+
+            apt-get download \
+                postgresql-16 postgresql-client-16 \
+                libpq5 libxslt1.1 libxml2 "$ICU_PKG"
+            if apt-get download postgresql-server-dev-16; then
+                true
+            else
+                echo "warning: postgresql-server-dev-16 not available; using existing system headers" >&2
+            fi
+            for deb in *.deb; do
+                dpkg-deb -x "$deb" "$TMP/root"
+                rm -f "$deb"
+            done
+        )
+        # Stage what we need under $DEST.
+        mkdir -p "$DEST/bin" "$DEST/lib" "$DEST/share/postgresql"
+        cp -a "$TMP/root/usr/lib/postgresql/16/bin/"*   "$DEST/bin/"   2>/dev/null || true
+        cp -a "$TMP/root/usr/lib/postgresql/16/lib/"*   "$DEST/lib/"   2>/dev/null || true
+        cp -a "$TMP/root/usr/share/postgresql/16/"*     "$DEST/share/postgresql/" 2>/dev/null || true
+        # Bundle the shared libs the binaries link against.
+        for so in libpq.so.5 libxslt.so.1 libxml2.so.2 libicuuc.so libicudata.so libicui18n.so; do
+            cp -aL "$TMP/root/usr/lib/x86_64-linux-gnu/$so"* "$DEST/lib/" 2>/dev/null || true
+        done
+
+        # Bundle PostgreSQL server headers for local pgvector compilation.
+        if [[ -d "$TMP/root/usr/include/postgresql" ]]; then
+            rm -rf "$DEST/include"
+            mkdir -p "$DEST/include"
+            cp -a "$TMP/root/usr/include/postgresql" "$DEST/include/"
+        fi
+        rm -rf "$TMP"
+        ;;
+
+    *)
+        echo "unknown OS: $OS" >&2
+        exit 1
+        ;;
+esac
+
+# Sanity check.
+if [[ "$OS" == "windows" ]]; then
+    [[ -x "$DEST/bin/postgres.exe" ]] || { echo "postgres.exe missing after extract" >&2; exit 1; }
+else
+    [[ -x "$DEST/bin/postgres" ]] || { echo "postgres binary missing after extract" >&2; exit 1; }
+fi
+
+log "✅ PG ${PG_VERSION} for $OS staged at $DEST ($(du -sh "$DEST" | cut -f1))"
