@@ -71,15 +71,28 @@ log "installing backend deps (binary-only) into the bundled interpreter"
 log "staging backend source into $BUNDLE_OUT"
 rm -rf "$BUNDLE_OUT"
 mkdir -p "$BUNDLE_OUT"
-rsync -a \
-    --exclude='.env' --exclude='.env.*' --exclude='.venv' \
-    --exclude='.git' --exclude='.claude' \
-    --exclude='__pycache__' --exclude='*.pyc' \
-    --exclude='.pytest_cache' --exclude='.ruff_cache' \
-    --exclude='tests' --exclude='build' --exclude='dist' \
-    --exclude='*.egg-info' \
-    --exclude='Dockerfile' --exclude='docker-compose*.yml' \
-    "$BACKEND_SRC/" "$BUNDLE_OUT/"
+if command -v rsync >/dev/null 2>&1; then
+    rsync -a \
+        --exclude='.env' --exclude='.env.*' --exclude='.venv' \
+        --exclude='.git' --exclude='.claude' \
+        --exclude='__pycache__' --exclude='*.pyc' \
+        --exclude='.pytest_cache' --exclude='.ruff_cache' \
+        --exclude='tests' --exclude='build' --exclude='dist' \
+        --exclude='*.egg-info' \
+        --exclude='Dockerfile' --exclude='docker-compose*.yml' \
+        "$BACKEND_SRC/" "$BUNDLE_OUT/"
+else
+    # Windows runners may not ship rsync. Fall back to a pure-copy mode.
+    # We keep this path simple and deterministic; it's good enough for build inputs.
+    cp -a "$BACKEND_SRC/." "$BUNDLE_OUT/"
+    rm -rf "$BUNDLE_OUT/.env" "$BUNDLE_OUT/.venv" "$BUNDLE_OUT/.git" "$BUNDLE_OUT/.claude" "$BUNDLE_OUT/.pytest_cache" "$BUNDLE_OUT/.ruff_cache" "$BUNDLE_OUT/build" "$BUNDLE_OUT/dist" "$BUNDLE_OUT/tests"
+    find "$BUNDLE_OUT" -type d -name '__pycache__' -exec rm -rf {} +
+    find "$BUNDLE_OUT" -type d -name '*.egg-info' -exec rm -rf {} +
+    find "$BUNDLE_OUT" -type f \( -name '*.pyc' -o -name 'Dockerfile' \) -delete
+    for dcfile in "$BUNDLE_OUT"/docker-compose*.yml; do
+        [ -e "$dcfile" ] && rm -f "$dcfile"
+    done
+fi
 
 # ── 4. Prune the interpreter for size ──────────────────────────
 log "pruning"
