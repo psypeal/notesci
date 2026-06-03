@@ -171,7 +171,7 @@ pub fn run() {
                 Ok(None) => {}
                 Err(err) => {
                     match pg_mode {
-                        pg::Mode::Embedded => {
+                        pg::Mode::Embedded { .. } => {
                             startup_error = Some(format!("embedded postgres failed: {err}"));
                         }
                         _ => {
