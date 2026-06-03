@@ -454,6 +454,149 @@ h3 {
   .step p { font-size: 14.5px; }
 }
 
+/* ============================================================ Download */
+
+.downloads {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 16px;
+  margin-top: 32px;
+}
+
+@media (max-width: 720px) {
+  .downloads { grid-template-columns: 1fr; gap: 12px; }
+}
+
+.dl-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 24px;
+  background: var(--glass-bg);
+  backdrop-filter: blur(22px) saturate(160%);
+  -webkit-backdrop-filter: blur(22px) saturate(160%);
+  border: 1px solid var(--glass-border);
+  border-radius: 14px;
+  box-shadow: var(--glass-shadow);
+  color: var(--ink);
+  transition:
+    transform 240ms ease,
+    box-shadow 240ms ease,
+    border-color 240ms ease;
+}
+
+.dl-card:hover {
+  transform: translateY(-3px);
+  color: var(--ink);
+  border-color: color-mix(in oklch, var(--indigo) 30%, var(--glass-border));
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.7) inset,
+    0 18px 44px rgba(14, 17, 22, 0.08),
+    0 4px 12px rgba(14, 17, 22, 0.05);
+}
+
+.dl-card-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 2px;
+}
+
+.dl-icon {
+  width: 28px;
+  height: 28px;
+  color: var(--indigo);
+  flex: none;
+}
+
+.dl-icon svg { width: 100%; height: 100%; display: block; }
+
+.dl-os {
+  font-family: var(--font-sans);
+  font-size: 18px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+.dl-variant {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  letter-spacing: 0.01em;
+  color: var(--teal);
+}
+
+.dl-note {
+  font-size: 13.5px;
+  line-height: 1.5;
+  color: var(--muted);
+}
+
+.dl-cta {
+  margin-top: 14px;
+  align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 16px;
+  border-radius: 9px;
+  background: var(--ink);
+  border: 1px solid var(--ink);
+  color: var(--paper);
+  font-size: 14px;
+  font-weight: 500;
+  transition: background 160ms ease, border-color 160ms ease;
+}
+
+.dl-cta svg { width: 15px; height: 15px; }
+
+.dl-card:hover .dl-cta {
+  background: var(--indigo);
+  border-color: var(--indigo);
+}
+
+.dl-size {
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  opacity: 0.72;
+}
+
+.dl-card--rec {
+  border-color: color-mix(in oklch, var(--teal) 45%, var(--glass-border));
+}
+
+.dl-badge {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--teal);
+  background: color-mix(in oklch, var(--teal) 12%, white);
+  border: 1px solid color-mix(in oklch, var(--teal) 35%, transparent);
+  border-radius: 999px;
+  padding: 3px 9px;
+}
+
+.dl-foot {
+  margin-top: 22px;
+  max-width: var(--measure);
+  font-size: 13.5px;
+  line-height: 1.65;
+  color: var(--muted);
+}
+
+.dl-foot strong { color: var(--ink); font-weight: 600; }
+.dl-foot a { color: var(--indigo); }
+.dl-version { font-family: var(--font-mono); font-size: 13px; }
+
+@media (max-width: 480px) {
+  .dl-card { padding: 20px; border-radius: 12px; }
+}
+
 /* ============================================================ Footer */
 
 .site-footer {
@@ -525,6 +668,7 @@ h3 {
   }
   .feature,
   .step,
+  .dl-card,
   .btn-secondary,
   .eyebrow {
     background: #fff;
@@ -536,11 +680,13 @@ h3 {
 
 @media (prefers-reduced-motion: reduce) {
   .btn,
-  .feature {
+  .feature,
+  .dl-card {
     transition: none;
   }
   .btn:hover,
-  .feature:hover {
+  .feature:hover,
+  .dl-card:hover {
     transform: none;
   }
 }

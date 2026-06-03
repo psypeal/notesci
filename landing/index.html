@@ -7,7 +7,7 @@
   <meta name="theme-color" content="#f6f4ef" />
 
   <title>notesci — a fully open-source research workspace</title>
-  <meta name="description" content="notesci is a fully open-source personal knowledge base for scientific research. Multi-provider LLMs, MCP tools, citations, and a drafting pipeline — self-hosted, single-user, private." />
+  <meta name="description" content="notesci is a fully open-source personal knowledge base for scientific research. A desktop app for macOS, Windows, and Linux — multi-provider LLMs, MCP tools, citations, and a drafting pipeline. Self-hosted, single-user, private." />
 
   <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
   <link rel="apple-touch-icon" href="/apple-touch-icon.svg" />
@@ -20,7 +20,7 @@
 
   <meta property="og:type" content="website" />
   <meta property="og:title" content="notesci — a fully open-source research workspace" />
-  <meta property="og:description" content="Fully open-source personal knowledge base for scientific research. Self-hosted, single-user, private." />
+  <meta property="og:description" content="Fully open-source personal knowledge base for scientific research. Desktop app for macOS, Windows, and Linux. Self-hosted, single-user, private." />
   <meta property="og:image" content="/apple-touch-icon.svg" />
   <meta name="twitter:card" content="summary" />
 </head>
@@ -48,6 +48,7 @@
       </a>
 
       <nav class="nav-links" aria-label="Primary">
+        <a href="#download">Download</a>
         <a href="#what">What is it</a>
         <a href="#features">Features</a>
         <a href="#open-source">Open source</a>
@@ -68,16 +69,123 @@
           Self-hosted, provider-agnostic, and built around the way you actually read and write.
         </p>
         <div class="cta-row">
-          <a class="btn btn-primary" href="https://github.com/psypeal/notesci" rel="noopener">
+          <a class="btn btn-primary" href="#download">
+            <svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+              <path d="M8 1.5a.75.75 0 0 1 .75.75v6.69l2.22-2.22a.75.75 0 1 1 1.06 1.06l-3.5 3.5a.75.75 0 0 1-1.06 0l-3.5-3.5a.75.75 0 1 1 1.06-1.06l2.22 2.22V2.25A.75.75 0 0 1 8 1.5ZM2.75 11.5a.75.75 0 0 1 .75.75v1a.75.75 0 0 0 .75.75h7.5a.75.75 0 0 0 .75-.75v-1a.75.75 0 0 1 1.5 0v1A2.25 2.25 0 0 1 11.75 15.5h-7.5A2.25 2.25 0 0 1 2 13.25v-1a.75.75 0 0 1 .75-.75Z"/>
+            </svg>
+            Download
+          </a>
+          <a class="btn btn-secondary" href="https://github.com/psypeal/notesci" rel="noopener">
             <svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
               <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0 0 16 8c0-4.42-3.58-8-8-8z"/>
             </svg>
             View on GitHub
           </a>
-          <a class="btn btn-secondary" href="#self-host">
-            Self-host in 3 steps
+        </div>
+      </div>
+    </section>
+
+    <section id="download">
+      <div class="container">
+        <p class="section-eyebrow">Download</p>
+        <h2>Get the desktop app.</h2>
+        <div class="prose">
+          <p>
+            notesci runs entirely on your own machine. The macOS, Windows, and Linux
+            <code class="code-inline">.rpm</code> builds bundle everything they need —
+            PostgreSQL and the Python runtime included — so there's no Docker, no server,
+            and nothing to configure before first launch.
+          </p>
+        </div>
+
+        <div class="downloads" id="downloads">
+          <!-- macOS -->
+          <a class="dl-card" href="https://github.com/psypeal/notesci/releases/download/v0.1.0/notesci_0.0.1_aarch64.dmg"
+             data-os="mac" data-match="aarch64.dmg" rel="noopener">
+            <div class="dl-card-head">
+              <span class="dl-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="currentColor">
+                  <path d="M17.05 12.04c-.03-2.6 2.12-3.85 2.22-3.91-1.21-1.77-3.09-2.01-3.76-2.04-1.6-.16-3.12.94-3.93.94-.81 0-1.72-.92-2.83-.9-1.46.02-2.8.85-3.55 2.16-1.51 2.63-.39 6.51 1.08 8.64.72 1.04 1.58 2.21 2.71 2.17 1.09-.04 1.5-.7 2.82-.7 1.31 0 1.69.7 2.83.68 1.17-.02 1.91-1.06 2.62-2.11.83-1.2 1.17-2.37 1.19-2.43-.03-.01-2.28-.88-2.31-3.48z"/>
+                  <path d="M14.93 4.6c.6-.73 1.01-1.74.9-2.76-.87.04-1.92.58-2.55 1.31-.56.64-1.05 1.67-.92 2.65.97.08 1.96-.49 2.57-1.2z"/>
+                </svg>
+              </span>
+              <span class="dl-os">macOS</span>
+            </div>
+            <span class="dl-variant">Apple Silicon · .dmg</span>
+            <span class="dl-note">Self-contained — bundles PostgreSQL + Python.</span>
+            <span class="dl-cta">
+              <svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 1.5a.75.75 0 0 1 .75.75v6.69l2.22-2.22a.75.75 0 1 1 1.06 1.06l-3.5 3.5a.75.75 0 0 1-1.06 0l-3.5-3.5a.75.75 0 1 1 1.06-1.06l2.22 2.22V2.25A.75.75 0 0 1 8 1.5ZM2.75 11.5a.75.75 0 0 1 .75.75v1a.75.75 0 0 0 .75.75h7.5a.75.75 0 0 0 .75-.75v-1a.75.75 0 0 1 1.5 0v1A2.25 2.25 0 0 1 11.75 15.5h-7.5A2.25 2.25 0 0 1 2 13.25v-1a.75.75 0 0 1 .75-.75Z"/></svg>
+              Download <span class="dl-size" data-size>787&nbsp;MB</span>
+            </span>
+          </a>
+
+          <!-- Windows -->
+          <a class="dl-card" href="https://github.com/psypeal/notesci/releases/download/v0.1.0/notesci_0.0.1_x64-setup.exe"
+             data-os="windows" data-match="setup.exe" rel="noopener">
+            <div class="dl-card-head">
+              <span class="dl-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="currentColor">
+                  <path d="M3 5.4 10.3 4.4v6.9H3zM11.5 4.25 21 3v8.3h-9.5zM3 12.7h7.3v6.9L3 18.6zM11.5 12.7H21V21l-9.5-1.3z"/>
+                </svg>
+              </span>
+              <span class="dl-os">Windows</span>
+            </div>
+            <span class="dl-variant">x64 · installer (.exe)</span>
+            <span class="dl-note">Self-contained — bundles PostgreSQL + Python.</span>
+            <span class="dl-cta">
+              <svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 1.5a.75.75 0 0 1 .75.75v6.69l2.22-2.22a.75.75 0 1 1 1.06 1.06l-3.5 3.5a.75.75 0 0 1-1.06 0l-3.5-3.5a.75.75 0 1 1 1.06-1.06l2.22 2.22V2.25A.75.75 0 0 1 8 1.5ZM2.75 11.5a.75.75 0 0 1 .75.75v1a.75.75 0 0 0 .75.75h7.5a.75.75 0 0 0 .75-.75v-1a.75.75 0 0 1 1.5 0v1A2.25 2.25 0 0 1 11.75 15.5h-7.5A2.25 2.25 0 0 1 2 13.25v-1a.75.75 0 0 1 .75-.75Z"/></svg>
+              Download <span class="dl-size" data-size>276&nbsp;MB</span>
+            </span>
+          </a>
+
+          <!-- Linux .deb -->
+          <a class="dl-card" href="https://github.com/psypeal/notesci/releases/download/v0.1.0/notesci_0.0.1_amd64.deb"
+             data-os="deb" data-match=".deb" rel="noopener">
+            <div class="dl-card-head">
+              <span class="dl-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="currentColor" fill-rule="evenodd">
+                  <path d="M12 2c-2 0-3.4 1.7-3.4 3.9 0 .5.05.95.15 1.35-.65.5-1.05 1.25-1.05 2.1 0 .3.04.55.12.8-.95 1.1-1.98 2.55-2.68 4.1-.3.65-.85 1.95-.35 2.55.32.38.85.28 1.16.6.3.3.2.9.52 1.3.32.4.88.4 1.4.5.42.1.64.52 1.05.72.62.3 1.4.4 2.11.4.72 0 1.5-.1 2.12-.4.4-.2.63-.62 1.05-.72.52-.1 1.08-.1 1.4-.5.32-.4.22-1 .52-1.3.3-.32.84-.22 1.16-.6.5-.6-.05-1.9-.35-2.55-.7-1.55-1.73-3-2.68-4.1.08-.25.12-.5.12-.8 0-.85-.4-1.6-1.05-2.1.1-.4.15-.85.15-1.35C15.4 3.7 14 2 12 2zm-1.4 3.1a.95.95 0 1 1 0 1.9.95.95 0 0 1 0-1.9zm2.8 0a.95.95 0 1 1 0 1.9.95.95 0 0 1 0-1.9z"/>
+                </svg>
+              </span>
+              <span class="dl-os">Linux</span>
+            </div>
+            <span class="dl-variant">.deb · Debian / Ubuntu · x86_64</span>
+            <span class="dl-note">Lightweight — uses system PostgreSQL&nbsp;16 + pgvector.</span>
+            <span class="dl-cta">
+              <svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 1.5a.75.75 0 0 1 .75.75v6.69l2.22-2.22a.75.75 0 1 1 1.06 1.06l-3.5 3.5a.75.75 0 0 1-1.06 0l-3.5-3.5a.75.75 0 1 1 1.06-1.06l2.22 2.22V2.25A.75.75 0 0 1 8 1.5ZM2.75 11.5a.75.75 0 0 1 .75.75v1a.75.75 0 0 0 .75.75h7.5a.75.75 0 0 0 .75-.75v-1a.75.75 0 0 1 1.5 0v1A2.25 2.25 0 0 1 11.75 15.5h-7.5A2.25 2.25 0 0 1 2 13.25v-1a.75.75 0 0 1 .75-.75Z"/></svg>
+              Download <span class="dl-size" data-size>3.3&nbsp;MB</span>
+            </span>
+          </a>
+
+          <!-- Linux .rpm -->
+          <a class="dl-card" href="https://github.com/psypeal/notesci/releases/download/v0.1.0/notesci-0.0.1-1.x86_64.rpm"
+             data-os="rpm" data-match=".rpm" rel="noopener">
+            <div class="dl-card-head">
+              <span class="dl-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="currentColor" fill-rule="evenodd">
+                  <path d="M12 2c-2 0-3.4 1.7-3.4 3.9 0 .5.05.95.15 1.35-.65.5-1.05 1.25-1.05 2.1 0 .3.04.55.12.8-.95 1.1-1.98 2.55-2.68 4.1-.3.65-.85 1.95-.35 2.55.32.38.85.28 1.16.6.3.3.2.9.52 1.3.32.4.88.4 1.4.5.42.1.64.52 1.05.72.62.3 1.4.4 2.11.4.72 0 1.5-.1 2.12-.4.4-.2.63-.62 1.05-.72.52-.1 1.08-.1 1.4-.5.32-.4.22-1 .52-1.3.3-.32.84-.22 1.16-.6.5-.6-.05-1.9-.35-2.55-.7-1.55-1.73-3-2.68-4.1.08-.25.12-.5.12-.8 0-.85-.4-1.6-1.05-2.1.1-.4.15-.85.15-1.35C15.4 3.7 14 2 12 2zm-1.4 3.1a.95.95 0 1 1 0 1.9.95.95 0 0 1 0-1.9zm2.8 0a.95.95 0 1 1 0 1.9.95.95 0 0 1 0-1.9z"/>
+                </svg>
+              </span>
+              <span class="dl-os">Linux</span>
+            </div>
+            <span class="dl-variant">.rpm · Fedora / RHEL · x86_64</span>
+            <span class="dl-note">Self-contained — bundles PostgreSQL + Python.</span>
+            <span class="dl-cta">
+              <svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 1.5a.75.75 0 0 1 .75.75v6.69l2.22-2.22a.75.75 0 1 1 1.06 1.06l-3.5 3.5a.75.75 0 0 1-1.06 0l-3.5-3.5a.75.75 0 1 1 1.06-1.06l2.22 2.22V2.25A.75.75 0 0 1 8 1.5ZM2.75 11.5a.75.75 0 0 1 .75.75v1a.75.75 0 0 0 .75.75h7.5a.75.75 0 0 0 .75-.75v-1a.75.75 0 0 1 1.5 0v1A2.25 2.25 0 0 1 11.75 15.5h-7.5A2.25 2.25 0 0 1 2 13.25v-1a.75.75 0 0 1 .75-.75Z"/></svg>
+              Download <span class="dl-size" data-size>377&nbsp;MB</span>
+            </span>
           </a>
         </div>
+
+        <p class="dl-foot">
+          <span class="dl-version">Latest release: <a id="dl-version-link" href="https://github.com/psypeal/notesci/releases/latest" rel="noopener">v0.1.0</a>.</span>
+          Builds are unsigned for now — on first launch macOS needs
+          <strong>right-click → Open</strong> and Windows needs
+          <strong>More info → Run anyway</strong>. On a different architecture (Apple Intel,
+          ARM Linux) or want the source? See
+          <a href="https://github.com/psypeal/notesci/releases" rel="noopener">all releases</a>
+          or <a href="#self-host">self-host with Docker</a>.
+        </p>
       </div>
     </section>
 
@@ -254,5 +362,67 @@
       </div>
     </div>
   </footer>
+
+  <script>
+    // Download section: (1) highlight the visitor's platform, and
+    // (2) progressively point each button at the *latest* release's
+    // matching asset so the page self-updates across future releases.
+    // The hardcoded hrefs are the fallback if the GitHub API is
+    // unreachable or rate-limited — nothing breaks without JS.
+    (function () {
+      var REPO = "psypeal/notesci";
+      var cards = [].slice.call(document.querySelectorAll(".dl-card"));
+      if (!cards.length) return;
+
+      // 1) Detect OS → mark the matching card "Recommended" and float it first.
+      var ua = navigator.userAgent || "";
+      var os = null;
+      if (/Windows|Win64|Win32/i.test(ua)) os = "windows";
+      else if (/Mac OS X|Macintosh/i.test(ua)) os = "mac";
+      else if (/Linux|X11|CrOS/i.test(ua) && !/Android/i.test(ua)) {
+        os = /Fedora|Red Hat|CentOS|SUSE|RPM/i.test(ua) ? "rpm" : "deb";
+      }
+      if (os) {
+        cards.forEach(function (c) {
+          if (c.getAttribute("data-os") !== os) return;
+          c.classList.add("dl-card--rec");
+          var badge = document.createElement("span");
+          badge.className = "dl-badge";
+          badge.textContent = "Recommended";
+          c.appendChild(badge);
+          c.parentNode.insertBefore(c, c.parentNode.firstChild);
+        });
+      }
+
+      // 2) Self-updating links via the public GitHub releases API.
+      function fmtSize(b) {
+        var mb = b / 1048576;
+        return (mb < 10 ? mb.toFixed(1) : Math.round(mb)) + " MB";
+      }
+      try {
+        fetch("https://api.github.com/repos/" + REPO + "/releases/latest", {
+          headers: { Accept: "application/vnd.github+json" }
+        })
+          .then(function (r) { return r.ok ? r.json() : null; })
+          .then(function (rel) {
+            if (!rel || !rel.assets || !rel.assets.length) return;
+            cards.forEach(function (c) {
+              var token = (c.getAttribute("data-match") || "").toLowerCase();
+              if (!token) return;
+              var asset = rel.assets.filter(function (a) {
+                return a.name.toLowerCase().indexOf(token) !== -1;
+              })[0];
+              if (!asset) return;
+              c.setAttribute("href", asset.browser_download_url);
+              var sizeEl = c.querySelector("[data-size]");
+              if (sizeEl) sizeEl.textContent = fmtSize(asset.size);
+            });
+            var vlink = document.getElementById("dl-version-link");
+            if (vlink && rel.tag_name) vlink.textContent = rel.tag_name;
+          })
+          .catch(function () {});
+      } catch (e) {}
+    })();
+  </script>
 </body>
 </html>
