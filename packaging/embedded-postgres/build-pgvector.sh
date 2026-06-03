@@ -29,6 +29,24 @@ SRC="$REPO_ROOT/build/pgvector-src"
 
 log() { printf '\n\033[1m==> %s\033[0m\n' "$*"; }
 
+sanitize_flags() {
+    local flags="${1-}"
+    [[ -z "$flags" ]] && { echo ""; return; }
+    echo " $flags " | sed -E 's/[[:space:]]-isysroot[[:space:]]+[^[:space:]]+//g; s/[[:space:]]+/ /g; s/^ //; s/ $//'
+}
+
+sanitize_pgxs_darwin_flags() {
+    local file
+    while IFS= read -r file; do
+        [[ -f "$file" ]] || continue
+        sed -i.bak -E \
+            -e 's#[[:space:]]-isysroot[[:space:]]+/[^[:space:]]+##g' \
+            -e 's#[[:space:]]-I/opt/local/[^[:space:]]+##g' \
+            -e 's#[[:space:]]-L/opt/local/[^[:space:]]+##g' \
+            "$file"
+    done < <(find "$PG_ROOT/lib/pgxs" -type f \( -name 'Makefile.global' -o -name 'Makefile.port' \) 2>/dev/null)
+}
+
 # Already installed in the RELOCATED tree? Skip. pg_config reports
 # COMPILE-TIME paths (e.g. /usr/lib/postgresql/16 or /Library/...), so we
 # check the staged tree directly — both candidate sharedir layouts.
@@ -55,6 +73,10 @@ case "$(uname -s)" in
         STAGE="$REPO_ROOT/build/pgv-stage"
         rm -rf "$STAGE"
         PG_VECTOR_CFLAGS=""
+        CFLAGS="${CFLAGS:-}"
+        CPPFLAGS="${CPPFLAGS:-}"
+        LDFLAGS="${LDFLAGS:-}"
+        PG_CPPFLAGS="${PG_CPPFLAGS:-}"
         if [[ -d "$PG_ROOT/include/postgresql/16/server" ]]; then
             PG_VECTOR_CFLAGS="-I$PG_ROOT/include/postgresql/16/server -I$PG_ROOT/include/postgresql/16/internal"
         elif [[ -d "$PG_ROOT/include/postgresql/server" ]]; then
@@ -65,23 +87,37 @@ case "$(uname -s)" in
             PG_VECTOR_CFLAGS="-I$PG_ROOT/include"
         fi
         if [[ "$(uname -s)" == "Darwin" ]]; then
+            sanitize_pgxs_darwin_flags
             SDKROOT="$(xcrun --sdk macosx --show-sdk-path 2>/dev/null || true)"
             if [[ -n "$SDKROOT" ]]; then
+                if [[ ! -d "$SDKROOT" ]]; then
+                    echo "Resolved macOS SDK path does not exist: $SDKROOT" >&2
+                    exit 1
+                fi
                 export SDKROOT
+                # PGXS can inherit stale sysroot flags from CI shells (for
+                # example, older macOS SDK paths). Strip them and enforce the
+                # currently resolved SDK path only.
+                CFLAGS="$(sanitize_flags "${CFLAGS:-}")"
+                CPPFLAGS="$(sanitize_flags "${CPPFLAGS:-}")"
+                LDFLAGS="$(sanitize_flags "${LDFLAGS:-}")"
+                PG_CPPFLAGS="$(sanitize_flags "${PG_CPPFLAGS:-}")"
                 PG_VECTOR_CFLAGS="$PG_VECTOR_CFLAGS -isysroot $SDKROOT -I$SDKROOT/usr/include"
-                export CFLAGS="${CFLAGS:-} -isysroot $SDKROOT"
-                export CPPFLAGS="${CPPFLAGS:-} -isysroot $SDKROOT -I$SDKROOT/usr/include"
+                CFLAGS="$CFLAGS -isysroot $SDKROOT"
+                CPPFLAGS="$CPPFLAGS -isysroot $SDKROOT -I$SDKROOT/usr/include"
+                LDFLAGS="$LDFLAGS -isysroot $SDKROOT -L$SDKROOT/usr/lib"
+                export CFLAGS CPPFLAGS LDFLAGS PG_CPPFLAGS
             fi
         fi
-        export PG_CPPFLAGS="$PG_VECTOR_CFLAGS"
+        export PG_CPPFLAGS="$PG_CPPFLAGS $PG_VECTOR_CFLAGS"
         make -C "$SRC" clean >/dev/null 2>&1 || true
-        make -C "$SRC" PG_CONFIG="$PG_CONFIG" PG_CPPFLAGS="$PG_CPPFLAGS"
+        make -C "$SRC" PG_CONFIG="$PG_CONFIG" PG_CPPFLAGS="$PG_CPPFLAGS" CFLAGS="$CFLAGS" CPPFLAGS="$CPPFLAGS" LDFLAGS="$LDFLAGS"
         # PostgreSQL's Makefile.global marks pkglibdir / datadir with GNU
         # make `override`, so `make install pkglibdir=… datadir=…` is
         # SILENTLY IGNORED. Install into a throwaway DESTDIR (pg_config's
         # compile-time dirs are honored *under* it), then relocate the
         # two artifacts into the staged tree ourselves.
-        make -C "$SRC" PG_CONFIG="$PG_CONFIG" PG_CPPFLAGS="$PG_CPPFLAGS" DESTDIR="$STAGE" install
+        make -C "$SRC" PG_CONFIG="$PG_CONFIG" PG_CPPFLAGS="$PG_CPPFLAGS" CFLAGS="$CFLAGS" CPPFLAGS="$CPPFLAGS" LDFLAGS="$LDFLAGS" DESTDIR="$STAGE" install
         CT_PKGLIB="$("$PG_CONFIG" --pkglibdir)"
         CT_SHARE="$("$PG_CONFIG" --sharedir)"
         # The module (vector.so / vector.dylib) is what postgres loads via
