@@ -1223,7 +1223,11 @@ export function WorkspacePage() {
       if (p.kind === 'pdf' && p.base64) {
         try {
           const bytes = base64ToBytes(p.base64)
-          setLivePdfBlob(new Blob([bytes], { type: 'application/pdf' }))
+          const pdfBytes =
+            bytes.buffer instanceof ArrayBuffer
+              ? bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength)
+              : new Uint8Array(bytes).buffer
+          setLivePdfBlob(new Blob([pdfBytes], { type: 'application/pdf' }))
           setLiveHtml(null)
           setLiveError(null)
         } catch {

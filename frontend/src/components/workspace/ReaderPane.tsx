@@ -1222,7 +1222,7 @@ export function ReaderPane({
                 rel="noopener noreferrer"
                 onClick={(e) => {
                   e.preventDefault()
-                  openInSystemBrowser(material.uri)
+                  openInSystemBrowser(material.uri ?? '')
                 }}
                 style={{
                   color: 'var(--color-indigo)',
