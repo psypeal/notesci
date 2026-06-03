@@ -113,6 +113,11 @@ jobs:
 
       # .rpm + .AppImage embed PG + Python (Mode::Embedded / Bundled layout).
       - name: Build .rpm + .AppImage (embedded Postgres + Python)
+        env:
+          # GitHub-hosted Linux runners do not reliably expose FUSE to nested
+          # AppImage tooling. Extraction mode avoids a linuxdeploy startup
+          # failure while producing the same final bundle.
+          APPIMAGE_EXTRACT_AND_RUN: "1"
         run: |
           cd desktop/src-tauri
           cargo tauri build --bundles rpm,appimage
