@@ -464,7 +464,7 @@ h3 {
   align-items: stretch;
 }
 
-@media (max-width: 760px) {
+@media (max-width: 860px) {
   .downloads { grid-template-columns: 1fr; gap: 12px; }
 }
 
@@ -472,15 +472,20 @@ h3 {
    other cards' height and anchor the absolutely-positioned menu. */
 .dl-card-wrap {
   position: relative;
-  display: flex;
+  min-width: 0;
 }
 
-.dl-card-wrap > .dl-card { flex: 1; }
+/* The trigger fills its grid cell exactly like the <a> cards — full width,
+   full row height — and min-width:0 stops it overflowing the track. */
+.dl-card-wrap > .dl-card {
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+}
 
 button.dl-card-trigger {
   appearance: none;
   -webkit-appearance: none;
-  width: 100%;
   font: inherit;
   text-align: left;
   cursor: pointer;
