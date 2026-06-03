@@ -27,10 +27,11 @@ mod pg;
 
 use log::{info, warn};
 use std::collections::HashMap;
+use std::fs::OpenOptions;
 #[cfg(windows)]
 use std::os::windows::process::CommandExt;
 use std::path::Path;
-use std::io::{Read, Write};
+use std::io::{Read, Seek, SeekFrom, Write};
 use std::process::{Child, Command};
 use std::sync::Mutex;
 use std::thread;
@@ -72,12 +73,15 @@ const DEV_ENV_FILE: &str = "../../backend/.env";
 const BACKEND_HOST: &str = "127.0.0.1";
 const BACKEND_PORT: u16 = 8765;
 
-// Allow up to 120s for the backend to come up — first Windows install can
-// spend extra time extracting embedded resources on slower machines.
+// Allow up to 300s for the backend to come up — first Windows install can
+// spend extra time on embedded Postgres init and DB bootstrap.
 // migrations + checkpointer init dominate. Subsequent launches are
 // usually <2s.
-const STARTUP_TIMEOUT: Duration = Duration::from_secs(120);
+const STARTUP_TIMEOUT_DEFAULT: Duration = Duration::from_secs(300);
 const STARTUP_POLL_INTERVAL: Duration = Duration::from_millis(200);
+const STARTUP_TIMEOUT_ENV: &str = "NOTESCI_BACKEND_STARTUP_TIMEOUT_SECS";
+const STARTUP_LOG_FILE: &str = "backend-startup.log";
+const STARTUP_LOG_TAIL_BYTES: usize = 8192;
 #[cfg(windows)]
 const CREATE_NO_WINDOW: u32 = 0x08000000;
 
@@ -141,6 +145,7 @@ pub fn run() {
                 .app_local_data_dir()
                 .map_err(|e| format!("app data dir: {e}"))?;
             let _ = std::fs::create_dir_all(&user_data_dir);
+            let _ = std::fs::create_dir_all(user_data_dir.join("runtime"));
 
             // Resolve install layout now that resource_dir() is known. The
             // Bundled arm (macOS / Windows / AppImage) lives under the
@@ -160,6 +165,7 @@ pub fn run() {
                 HashMap::new()
             });
             info!("loaded {} env vars from config", env_overrides.len());
+            let startup_timeout = backend_startup_timeout(&env_overrides);
 
             let pg_mode = pg::detect(&resource_dir, &user_data_dir);
             info!("pg mode: {:?}", pg_mode);
@@ -203,23 +209,39 @@ pub fn run() {
             if startup_error.is_none() {
                 if !already_up {
                     match spawn_backend(&layout, &env_overrides) {
-                        Ok(child) => {
-                            let state: tauri::State<BackendChild> = app.state();
-                            *state.0.lock().unwrap() = Some(child);
+                        Ok(mut child) => {
                             info!(
                                 "backend spawned, waiting for {}:{}",
                                 BACKEND_HOST, BACKEND_PORT
                             );
-                            // Block until backend is up. We don't want the WebView
-                            // loading a connection-refused page.
                             if let Err(err) = wait_for_backend(
                                 BACKEND_HOST,
                                 BACKEND_PORT,
-                                STARTUP_TIMEOUT,
+                                startup_timeout,
                             ) {
                                 warn!("backend readiness check failed: {err}");
-                                startup_error = Some(err);
+                                let status = child.try_wait().ok().flatten();
+                                let tail = read_log_tail(
+                                    &layout.backend_log,
+                                    STARTUP_LOG_TAIL_BYTES,
+                                )
+                                .unwrap_or_else(|| "(backend log unavailable)".to_string());
+                                let reason = match status {
+                                    Some(exit_status) => {
+                                        format!(
+                                            "backend exited before ready: {exit_status}\n\nbackend startup log:\n{tail}"
+                                        )
+                                    }
+                                    None => {
+                                        format!("{err}\n\nbackend startup log:\n{tail}")
+                                    }
+                                };
+                                let _ = child.kill();
+                                let _ = child.wait();
+                                startup_error = Some(reason);
                             } else {
+                                let state: tauri::State<BackendChild> = app.state();
+                                *state.0.lock().unwrap() = Some(child);
                                 info!("backend ready");
                             }
                         }
@@ -233,7 +255,7 @@ pub fn run() {
                     if let Err(err) = wait_for_backend(
                         BACKEND_HOST,
                         BACKEND_PORT,
-                        STARTUP_TIMEOUT,
+                        startup_timeout,
                     ) {
                         warn!("backend readiness check failed: {err}");
                         startup_error = Some(err);
@@ -337,12 +359,23 @@ pub fn run() {
             Ok(())
         })
         .on_window_event(|win, event| {
-            // Intercept close: hide instead of quit. The tray's Quit
-            // item is the only path that fully exits — matches what
-            // users expect from a single-icon desktop app.
+            // Intercept close to avoid surprising quits from dialog windows.
+            // On Windows, closing the main window fully exits the app
+            // to avoid orphaned backend processes.
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
-                api.prevent_close();
-                let _ = win.hide();
+                if win.label() == "main" {
+                    api.prevent_close();
+                    #[cfg(windows)]
+                    {
+                        let app_handle = win.app_handle();
+                        kill_backend(&app_handle);
+                        app_handle.exit(0);
+                    }
+                    #[cfg(not(windows))]
+                    {
+                        let _ = win.hide();
+                    }
+                }
             }
         })
         .run(tauri::generate_context!())
@@ -369,10 +402,12 @@ struct Layout {
     static_dir: std::path::PathBuf,
     env_file: std::path::PathBuf,
     local_token: std::path::PathBuf,
+    backend_log: std::path::PathBuf,
 }
 
 fn resolve_layout(resource_dir: &Path, user_data_dir: &Path) -> Layout {
     let local_token = user_data_dir.join(TOKEN_FILENAME);
+    let backend_log = user_data_dir.join("runtime").join(STARTUP_LOG_FILE);
 
     // 1. Installed (.deb): system venv at /opt/notesci. Checked first so
     //    the Debian path is never shadowed by a stray bundled tree.
@@ -385,6 +420,7 @@ fn resolve_layout(resource_dir: &Path, user_data_dir: &Path) -> Layout {
             static_dir: FRONTEND_STATIC_DIR.into(),
             env_file: CONFIG_FILE.into(),
             local_token,
+            backend_log: backend_log.clone(),
         };
     }
 
@@ -410,6 +446,7 @@ fn resolve_layout(resource_dir: &Path, user_data_dir: &Path) -> Layout {
             // per-user conf created on demand under the data dir.
             env_file: user_data_dir.join("notesci.conf"),
             local_token,
+            backend_log: backend_log.clone(),
         };
     }
 
@@ -422,6 +459,7 @@ fn resolve_layout(resource_dir: &Path, user_data_dir: &Path) -> Layout {
         static_dir: DEV_FRONTEND_STATIC_DIR.into(),
         env_file: DEV_ENV_FILE.into(),
         local_token,
+        backend_log,
     }
 }
 
@@ -454,6 +492,13 @@ fn load_env_file(path: &Path) -> Result<HashMap<String, String>, std::io::Error>
     Ok(out)
 }
 
+fn backend_startup_timeout(env: &HashMap<String, String>) -> Duration {
+    env.get(STARTUP_TIMEOUT_ENV)
+        .and_then(|raw| raw.parse::<u64>().ok())
+        .map(|seconds| Duration::from_secs(seconds.clamp(30, 900)))
+        .unwrap_or(STARTUP_TIMEOUT_DEFAULT)
+}
+
 fn spawn_backend(layout: &Layout, env: &HashMap<String, String>) -> std::io::Result<Child> {
     // Belt-and-suspenders: the bundle re-tar (deb/rpm) and AppImage squashfs
     // don't reliably preserve the +x bit on the staged interpreter, and a
@@ -469,6 +514,11 @@ fn spawn_backend(layout: &Layout, env: &HashMap<String, String>) -> std::io::Res
         }
     }
     let port_str = BACKEND_PORT.to_string();
+    let log_file = OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&layout.backend_log)?;
+    let log_for_stdout = log_file.try_clone()?;
     let mut cmd = Command::new(&layout.python);
     cmd.args([
         "-m",
@@ -492,11 +542,11 @@ fn spawn_backend(layout: &Layout, env: &HashMap<String, String>) -> std::io::Res
     for (k, v) in env {
         cmd.env(k, v);
     }
+    cmd.stdout(std::process::Stdio::from(log_for_stdout));
+    cmd.stderr(std::process::Stdio::from(log_file));
+    cmd.stdin(std::process::Stdio::null());
     #[cfg(windows)]
     cmd.creation_flags(CREATE_NO_WINDOW);
-    // Forward backend logs to the desktop process's stderr so
-    // `journalctl --user -t notesci` (if the user wires it up later)
-    // captures backend output too.
     cmd.spawn()
 }
 
@@ -562,6 +612,19 @@ fn wait_for_readyz(addr: &str) -> Result<(), String> {
         "readyz status not ready: {} (body: {})",
         status, body
     ))
+}
+
+fn read_log_tail(path: &Path, max_bytes: usize) -> std::io::Result<String> {
+    let mut file = OpenOptions::new().read(true).open(path)?;
+    let len = file.metadata()?.len();
+    if len > max_bytes as u64 {
+        file.seek(SeekFrom::End(-(max_bytes as i64)))?;
+    } else {
+        file.seek(SeekFrom::Start(0))?;
+    }
+    let mut buf = Vec::new();
+    file.read_to_end(&mut buf)?;
+    Ok(String::from_utf8_lossy(&buf).into_owned())
 }
 
 fn show_startup_error_page(win: &tauri::WebviewWindow, reason: &str) -> Result<(), String> {
