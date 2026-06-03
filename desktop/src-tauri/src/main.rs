@@ -5,9 +5,8 @@
 // library crate and can be exercised from tests / external callers
 // (e.g. a future macOS bundle that calls notesci_lib::run() directly).
 
-// On Windows, suppress the console window for the release build.
-// Harmless on Linux/macOS.
-#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
+// Hide the console window on Windows so end users only see the GUI.
+#![cfg_attr(windows, windows_subsystem = "windows")]
 
 fn main() {
     notesci_lib::run();

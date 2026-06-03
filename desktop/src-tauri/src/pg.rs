@@ -14,6 +14,8 @@
 // without an additional conversion layer.
 
 use log::{info, warn};
+#[cfg(windows)]
+use std::os::windows::process::CommandExt;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::thread;
@@ -41,6 +43,8 @@ const PG_DATA_SUBDIR: &str = "pg-data-16";
 /// pole (~10s). Subsequent boots are <1s.
 const STARTUP_TIMEOUT: Duration = Duration::from_secs(45);
 const POLL_INTERVAL: Duration = Duration::from_millis(150);
+#[cfg(windows)]
+const CREATE_NO_WINDOW: u32 = 0x08000000;
 
 #[derive(Debug)]
 pub enum Mode {
@@ -60,7 +64,11 @@ pub enum Mode {
 /// embedded mode; absent → system mode.
 pub fn detect(resource_dir: &Path, user_data_dir: &Path) -> Mode {
     let pg_root = resource_dir.join("pg");
-    let bin_name = if cfg!(windows) { "postgres.exe" } else { "postgres" };
+    let bin_name = if cfg!(windows) {
+        "postgres.exe"
+    } else {
+        "postgres"
+    };
     let bin_path = pg_root.join("bin").join(bin_name);
     if bin_path.exists() {
         Mode::Embedded {
@@ -87,6 +95,7 @@ pub fn ensure_started(mode: &Mode) -> Result<Option<String>, String> {
             data_dir,
             port,
         } => {
+            verify_embedded_pg_tree(pg_root)?;
             ensure_initdb(pg_root, data_dir)?;
             // Refresh the runtime conf every launch — pg_root (and thus
             // dynamic_library_path) changes for AppImage builds whose
@@ -100,7 +109,10 @@ pub fn ensure_started(mode: &Mode) -> Result<Option<String>, String> {
             ensure_role_and_db(pg_root, *port)?;
             let url = format!(
                 "postgresql://{}:{}@127.0.0.1:{}/{}",
-                PG_ROLE, embedded_password(), port, PG_DATABASE,
+                PG_ROLE,
+                embedded_password(),
+                port,
+                PG_DATABASE,
             );
             info!("pg: embedded instance up on 127.0.0.1:{port}");
             Ok(Some(url))
@@ -111,13 +123,12 @@ pub fn ensure_started(mode: &Mode) -> Result<Option<String>, String> {
 /// `pg_ctl stop -m fast`. Safe to call when not running — pg_ctl just
 /// logs that there's nothing to stop.
 pub fn stop(mode: &Mode) {
-    if let Mode::Embedded { pg_root, data_dir, .. } = mode {
+    if let Mode::Embedded {
+        pg_root, data_dir, ..
+    } = mode
+    {
         let r = pg_command(pg_root, "pg_ctl")
-            .args([
-                "-D", &data_dir.to_string_lossy(),
-                "-m", "fast",
-                "stop",
-            ])
+            .args(["-D", &data_dir.to_string_lossy(), "-m", "fast", "stop"])
             .stdout(Stdio::null())
             .stderr(Stdio::piped())
             .status();
@@ -133,7 +144,83 @@ pub fn stop(mode: &Mode) {
 
 fn bin(pg_root: &Path, name: &str) -> PathBuf {
     let suffix = if cfg!(windows) { ".exe" } else { "" };
-    pg_root.join("bin").join(format!("{name}{suffix}"))
+    let path = pg_root.join("bin").join(format!("{name}{suffix}"));
+    windows_compat_path(&path)
+}
+
+#[cfg(windows)]
+fn windows_compat_path(path: &Path) -> PathBuf {
+    let s = path.to_string_lossy();
+    if s.starts_with(r"\\?\") || s.starts_with("//?/") {
+        PathBuf::from(&s[4..])
+    } else {
+        path.to_path_buf()
+    }
+}
+
+#[cfg(not(windows))]
+fn windows_compat_path(path: &Path) -> PathBuf {
+    path.to_path_buf()
+}
+
+fn verify_embedded_pg_tree(pg_root: &Path) -> Result<(), String> {
+    let bin_dir = pg_root.join("bin");
+    let required: &[&str] = if cfg!(windows) {
+        &["postgres.exe", "initdb.exe", "pg_ctl.exe", "psql.exe"]
+    } else {
+        &["postgres", "initdb", "pg_ctl", "psql"]
+    };
+
+    let mut missing: Vec<String> = required
+        .iter()
+        .filter(|name| !bin_dir.join(name).exists())
+        .map(|name| (*name).to_string())
+        .collect();
+
+    if cfg!(windows) && missing.is_empty() {
+        // `initdb.exe` locates `postgres` as a sibling helper. In some
+        // Windows builds that probe is extensionless, so ship/runtime-create
+        // aliases beside the canonical `.exe` binaries.
+        for name in ["postgres", "initdb", "pg_ctl"] {
+            let alias = bin_dir.join(name);
+            if alias.exists() {
+                continue;
+            }
+            let exe = bin_dir.join(format!("{name}.exe"));
+            if exe.exists() {
+                std::fs::copy(&exe, &alias).map_err(|e| {
+                    format!("create embedded postgres helper {}: {e}", alias.display())
+                })?;
+            }
+        }
+        for name in ["postgres", "initdb", "pg_ctl"] {
+            if !bin_dir.join(name).exists() {
+                missing.push(name.to_string());
+            }
+        }
+    }
+
+    if missing.is_empty() {
+        return Ok(());
+    }
+
+    let listing = std::fs::read_dir(&bin_dir)
+        .ok()
+        .map(|entries| {
+            entries
+                .filter_map(Result::ok)
+                .map(|entry| entry.file_name().to_string_lossy().into_owned())
+                .collect::<Vec<_>>()
+                .join(", ")
+        })
+        .unwrap_or_else(|| "<unreadable>".to_string());
+
+    Err(format!(
+        "embedded Postgres bundle incomplete. missing [{}]; {} contains [{}]",
+        missing.join(", "),
+        bin_dir.display(),
+        listing
+    ))
 }
 
 /// A `Command` for an embedded PG binary with the bundled `lib/` dir on
@@ -144,6 +231,9 @@ fn bin(pg_root: &Path, name: &str) -> PathBuf {
 /// on Windows (DLLs resolve from the binary's own dir / PATH).
 fn pg_command(pg_root: &Path, name: &str) -> Command {
     let mut cmd = Command::new(bin(pg_root, name));
+    cmd.current_dir(pg_root.join("bin"));
+    #[cfg(windows)]
+    cmd.creation_flags(CREATE_NO_WINDOW);
     #[cfg(not(windows))]
     {
         let key = if cfg!(target_os = "macos") {
@@ -180,9 +270,12 @@ fn ensure_initdb(pg_root: &Path, data_dir: &Path) -> Result<(), String> {
     // separately in ``ensure_started`` so it's refreshed on every launch.
     let out = pg_command(pg_root, "initdb")
         .args([
-            "-D", &data_dir.to_string_lossy(),
-            "--username", PG_ROLE,
-            "--encoding", "UTF8",
+            "-D",
+            &data_dir.to_string_lossy(),
+            "--username",
+            PG_ROLE,
+            "--encoding",
+            "UTF8",
             "--no-locale",
             "--auth-local=trust",
             "--auth-host=trust",
@@ -207,8 +300,7 @@ fn set_secure_mode(_data_dir: &Path) -> Result<(), String> {
     {
         use std::os::unix::fs::PermissionsExt;
         let p = std::fs::Permissions::from_mode(0o700);
-        std::fs::set_permissions(_data_dir, p)
-            .map_err(|e| format!("chmod 0700 data dir: {e}"))?;
+        std::fs::set_permissions(_data_dir, p).map_err(|e| format!("chmod 0700 data dir: {e}"))?;
     }
     Ok(())
 }
@@ -250,9 +342,11 @@ fn ensure_started_at(pg_root: &Path, data_dir: &Path, _port: u16) -> Result<(), 
     let logfile = data_dir.join("pg-startup.log");
     let r = pg_command(pg_root, "pg_ctl")
         .args([
-            "-D", &data_dir.to_string_lossy(),
-            "-l", &logfile.to_string_lossy(),
-            "-w",  // wait for startup; pg_ctl exits 0 when ready
+            "-D",
+            &data_dir.to_string_lossy(),
+            "-l",
+            &logfile.to_string_lossy(),
+            "-w", // wait for startup; pg_ctl exits 0 when ready
             "start",
         ])
         .stdout(Stdio::null())
@@ -262,7 +356,10 @@ fn ensure_started_at(pg_root: &Path, data_dir: &Path, _port: u16) -> Result<(), 
     // pg_ctl returns 0 either when starting OR when already running —
     // both are fine for our purposes. Surface any other code.
     if !r.success() {
-        return Err(format!("pg_ctl start exited {r}; see {}", logfile.display()));
+        return Err(format!(
+            "pg_ctl start exited {r}; see {}",
+            logfile.display()
+        ));
     }
     Ok(())
 }
@@ -281,7 +378,10 @@ fn wait_for_port(host: &str, port: u16, timeout: Duration) -> Result<(), String>
         }
         thread::sleep(POLL_INTERVAL);
     }
-    Err(format!("pg never became reachable on {addr} within {:?}", timeout))
+    Err(format!(
+        "pg never became reachable on {addr} within {:?}",
+        timeout
+    ))
 }
 
 /// On the very first launch the cluster has only the bootstrap
@@ -310,13 +410,13 @@ fn ensure_role_and_db(pg_root: &Path, port: u16) -> Result<(), String> {
         pg_root,
         port,
         "postgres",
-        &format!("SELECT 1 FROM pg_database WHERE datname = '{}'", PG_DATABASE),
+        &format!(
+            "SELECT 1 FROM pg_database WHERE datname = '{}'",
+            PG_DATABASE
+        ),
     )?;
     if exists.trim().is_empty() {
-        let stmt = format!(
-            "CREATE DATABASE \"{}\" OWNER \"{}\"",
-            PG_DATABASE, PG_ROLE,
-        );
+        let stmt = format!("CREATE DATABASE \"{}\" OWNER \"{}\"", PG_DATABASE, PG_ROLE,);
         run_psql(pg_root, port, "postgres", &stmt)?;
     }
     Ok(())
@@ -325,13 +425,19 @@ fn ensure_role_and_db(pg_root: &Path, port: u16) -> Result<(), String> {
 fn run_psql(pg_root: &Path, port: u16, dbname: &str, sql: &str) -> Result<(), String> {
     let out = pg_command(pg_root, "psql")
         .args([
-            "-h", "127.0.0.1",
-            "-p", &port.to_string(),
-            "-U", PG_ROLE,
-            "-d", dbname,
-            "-v", "ON_ERROR_STOP=1",
+            "-h",
+            "127.0.0.1",
+            "-p",
+            &port.to_string(),
+            "-U",
+            PG_ROLE,
+            "-d",
+            dbname,
+            "-v",
+            "ON_ERROR_STOP=1",
             "-q",
-            "-c", sql,
+            "-c",
+            sql,
         ])
         .output()
         .map_err(|e| format!("psql spawn: {e}"))?;
@@ -348,13 +454,19 @@ fn run_psql(pg_root: &Path, port: u16, dbname: &str, sql: &str) -> Result<(), St
 fn run_psql_query(pg_root: &Path, port: u16, dbname: &str, sql: &str) -> Result<String, String> {
     let out = pg_command(pg_root, "psql")
         .args([
-            "-h", "127.0.0.1",
-            "-p", &port.to_string(),
-            "-U", PG_ROLE,
-            "-d", dbname,
-            "-v", "ON_ERROR_STOP=1",
+            "-h",
+            "127.0.0.1",
+            "-p",
+            &port.to_string(),
+            "-U",
+            PG_ROLE,
+            "-d",
+            dbname,
+            "-v",
+            "ON_ERROR_STOP=1",
             "-At",
-            "-c", sql,
+            "-c",
+            sql,
         ])
         .output()
         .map_err(|e| format!("psql query spawn: {e}"))?;

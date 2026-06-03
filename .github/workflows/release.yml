@@ -257,6 +257,34 @@ jobs:
             -PgRoot "desktop/src-tauri/resources/pg" `
             -PgvectorRef "v$env:PGVECTOR_VERSION"
 
+      - name: Validate Windows embedded Postgres bundle
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $pg = "desktop/src-tauri/resources/pg"
+          $required = @(
+            "bin/postgres.exe",
+            "bin/postgres",
+            "bin/initdb.exe",
+            "bin/initdb",
+            "bin/pg_ctl.exe",
+            "bin/pg_ctl",
+            "bin/psql.exe",
+            "lib/vector.dll",
+            "share/extension/vector.control"
+          )
+          foreach ($rel in $required) {
+            $path = Join-Path $pg $rel
+            if (-not (Test-Path -LiteralPath $path)) {
+              Get-ChildItem -LiteralPath (Join-Path $pg "bin") | Select-Object Name, Length | Format-Table | Out-String | Write-Host
+              throw "Missing Windows embedded Postgres artifact: $path"
+            }
+          }
+          & (Join-Path $pg "bin/postgres.exe") -V
+          if ($LASTEXITCODE -ne 0) {
+            throw "postgres.exe -V failed with exit code $LASTEXITCODE"
+          }
+
       - name: Build Tauri (.exe NSIS)
         shell: pwsh
         run: |

@@ -55,7 +55,12 @@ download_archive() {
     return 1
 }
 
-if [[ -d "$DEST/bin" ]] && [[ -x "$DEST/bin/postgres" || -x "$DEST/bin/postgres.exe" ]]; then
+if [[ "$OS" == "windows" && -d "$DEST/bin" && -f "$DEST/bin/postgres.exe" \
+      && -f "$DEST/bin/postgres" && -f "$DEST/bin/initdb" && -f "$DEST/bin/pg_ctl" ]]; then
+    log "$OS PG tree already at $DEST — skipping"
+    exit 0
+fi
+if [[ "$OS" != "windows" && -d "$DEST/bin" && -x "$DEST/bin/postgres" ]]; then
     log "$OS PG tree already at $DEST — skipping"
     exit 0
 fi
@@ -165,7 +170,26 @@ esac
 
 # Sanity check.
 if [[ "$OS" == "windows" ]]; then
-    [[ -x "$DEST/bin/postgres.exe" ]] || { echo "postgres.exe missing after extract" >&2; exit 1; }
+    if [[ ! -f "$DEST/bin/postgres.exe" ]]; then
+        echo "postgres.exe missing after extract" >&2
+        exit 1
+    fi
+    # Some Postgres startup helpers still look for extensionless helper
+    # binaries on Windows (e.g. `postgres`), so create compatibility
+    # shims when the zip only ships `.exe` variants.
+    if [[ ! -f "$DEST/bin/postgres" ]]; then
+        cp "$DEST/bin/postgres.exe" "$DEST/bin/postgres"
+    fi
+    if [[ ! -f "$DEST/bin/initdb" ]]; then
+        cp "$DEST/bin/initdb.exe" "$DEST/bin/initdb"
+    fi
+    if [[ ! -f "$DEST/bin/pg_ctl" ]]; then
+        cp "$DEST/bin/pg_ctl.exe" "$DEST/bin/pg_ctl"
+    fi
+    if [[ ! -x "$DEST/bin/postgres" || ! -x "$DEST/bin/postgres.exe" ]]; then
+        echo "postgres helper binary missing after copy/verification" >&2
+        exit 1
+    fi
 else
     [[ -x "$DEST/bin/postgres" ]] || { echo "postgres binary missing after extract" >&2; exit 1; }
 fi
