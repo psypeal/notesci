@@ -583,9 +583,10 @@ button.dl-card-trigger {
 
 .dl-cta {
   margin-top: 14px;
-  align-self: flex-start;
-  display: inline-flex;
+  align-self: stretch;
+  display: flex;
   align-items: center;
+  justify-content: center;
   gap: 8px;
   padding: 9px 16px;
   border-radius: 9px;
@@ -634,7 +635,7 @@ button.dl-card-trigger {
 .dl-chevron {
   width: 13px;
   height: 13px;
-  margin-left: auto;
+  margin-left: 2px;
   opacity: 0.8;
   transition: transform 160ms ease;
 }
