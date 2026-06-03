@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="notesci/design_handoff_notesci_logo/assets/lockup-teal-indigo.svg" width="360" alt="notesci">
+</p>
+
 # notesci
 
 notesci is an open-source, local-first research workspace for reading,
@@ -77,6 +81,7 @@ embed more runtime components for one-click local testing.
 | `desktop/src-tauri/` | Tauri desktop app and installer configuration |
 | `packaging/` | Linux/macOS/Windows packaging helpers |
 | `landing/` | Static project landing page |
+| `notesci/design_handoff_notesci_logo/` | Canonical logo, wordmark, and brand tokens |
 | `.github/workflows/` | CI and release packaging workflows |
 
 More detailed implementation notes live in:
@@ -85,6 +90,27 @@ More detailed implementation notes live in:
 - `frontend/README.md`
 - `packaging/cross-platform.md`
 - `landing/README.md`
+
+## Brand assets
+
+The canonical notesci mark is the teal + indigo NS lettermark with the
+lowercase `notesci` wordmark. Source SVGs live in:
+
+```text
+notesci/design_handoff_notesci_logo/assets/
+```
+
+Recommended assets:
+
+| Asset | Use |
+|---|---|
+| `lockup-teal-indigo.svg` | README, landing page, headers |
+| `icon-teal-indigo.svg` | Default app icon / favicon |
+| `icon-app-tile.svg` | Dark app tile and store-style contexts |
+| `icon-mono.svg` | Single-color print or mask contexts |
+
+See `notesci/design_handoff_notesci_logo/README.md` for geometry, colors,
+typography, and implementation guidance.
 
 ## Local development
 
