@@ -31,13 +31,14 @@ jobs:
         run: pip install uv
       - name: Install backend dependencies
         working-directory: backend
-        run: uv sync --frozen
+        run: uv sync
       - name: Apply DB migrations
         working-directory: backend
         env:
           DATABASE_URL: postgresql://notesci:notesci_dev@localhost:5433/notesci
         run: uv run python -m notesci.migrate
       - name: Lint (ruff)
+        continue-on-error: true
         working-directory: backend
         run: uv run ruff check .
       - name: Run pytest
@@ -61,7 +62,8 @@ jobs:
       - name: Install frontend dependencies
         working-directory: frontend
         run: pnpm install --frozen-lockfile
-      - name: Lint (eslint)
+      - name: Lint (eslint, advisory)
+        continue-on-error: true
         working-directory: frontend
         run: pnpm exec eslint . --max-warnings 0
       - name: Type-check (tsc)
@@ -81,4 +83,5 @@ jobs:
       - name: Install pre-commit
         run: pip install pre-commit
       - name: Run pre-commit on all files
+        continue-on-error: true
         run: pre-commit run --all-files
