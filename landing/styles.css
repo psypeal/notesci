@@ -493,26 +493,12 @@ h3 {
   .downloads { grid-template-columns: 1fr; gap: 12px; }
 }
 
-/* Linux card wraps a trigger button + a popup; it must stretch to match the
-   other cards' height and anchor the absolutely-positioned menu. */
-.dl-card-wrap {
-  position: relative;
-  min-width: 0;
-}
-
-/* The trigger fills its grid cell exactly like the <a> cards — full width,
-   full row height — and min-width:0 stops it overflowing the track. */
-.dl-card-wrap > .dl-card {
-  width: 100%;
-  height: 100%;
-  min-width: 0;
-}
-
-button.dl-card-trigger {
+/* The Linux Download control is a <button> styled as the .dl-cta pill —
+   reset native button chrome so it matches the macOS/Windows download links. */
+button.dl-cta {
   appearance: none;
   -webkit-appearance: none;
-  font: inherit;
-  text-align: left;
+  font-family: inherit;
   cursor: pointer;
 }
 
@@ -611,26 +597,6 @@ button.dl-card-trigger {
   opacity: 0.72;
 }
 
-.dl-card--rec {
-  border-color: color-mix(in oklch, var(--teal) 45%, var(--glass-border));
-}
-
-.dl-badge {
-  position: absolute;
-  top: 14px;
-  right: 14px;
-  font-family: var(--font-mono);
-  font-size: 10px;
-  font-weight: 500;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: var(--teal);
-  background: color-mix(in oklch, var(--teal) 12%, white);
-  border: 1px solid color-mix(in oklch, var(--teal) 35%, transparent);
-  border-radius: 999px;
-  padding: 3px 9px;
-}
-
 /* Linux picker: chevron on the trigger + the popup menu */
 .dl-chevron {
   width: 13px;
@@ -640,10 +606,11 @@ button.dl-card-trigger {
   transition: transform 160ms ease;
 }
 
-.dl-card-trigger[aria-expanded="true"] .dl-chevron { transform: rotate(180deg); }
+.dl-cta-trigger[aria-expanded="true"] .dl-chevron { transform: rotate(180deg); }
 
-.dl-card-trigger[aria-expanded="true"] {
-  border-color: color-mix(in oklch, var(--indigo) 35%, var(--glass-border));
+.dl-cta-trigger[aria-expanded="true"] {
+  background: var(--indigo);
+  border-color: var(--indigo);
 }
 
 .dl-menu {

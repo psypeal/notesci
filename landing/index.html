@@ -99,9 +99,8 @@
         </div>
 
         <div class="downloads" id="downloads">
-          <!-- macOS -->
-          <a class="dl-card" href="https://github.com/psypeal/notesci/releases/download/v0.1.0/notesci_0.0.1_aarch64.dmg"
-             data-os="mac" data-match="aarch64.dmg" rel="noopener">
+          <!-- macOS — card is static; only the Download link triggers the download -->
+          <div class="dl-card" data-os="mac">
             <div class="dl-card-head">
               <span class="dl-icon" aria-hidden="true">
                 <svg viewBox="0 0 24 24" fill="currentColor">
@@ -113,15 +112,15 @@
             </div>
             <span class="dl-variant">Apple Silicon · .dmg</span>
             <span class="dl-note">Self-contained — bundles PostgreSQL + Python.</span>
-            <span class="dl-cta">
+            <a class="dl-cta" data-match="aarch64.dmg" rel="noopener"
+               href="https://github.com/psypeal/notesci/releases/download/v0.1.0/notesci_0.0.1_aarch64.dmg">
               <svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 1.5a.75.75 0 0 1 .75.75v6.69l2.22-2.22a.75.75 0 1 1 1.06 1.06l-3.5 3.5a.75.75 0 0 1-1.06 0l-3.5-3.5a.75.75 0 1 1 1.06-1.06l2.22 2.22V2.25A.75.75 0 0 1 8 1.5ZM2.75 11.5a.75.75 0 0 1 .75.75v1a.75.75 0 0 0 .75.75h7.5a.75.75 0 0 0 .75-.75v-1a.75.75 0 0 1 1.5 0v1A2.25 2.25 0 0 1 11.75 15.5h-7.5A2.25 2.25 0 0 1 2 13.25v-1a.75.75 0 0 1 .75-.75Z"/></svg>
               Download <span class="dl-size" data-size>787&nbsp;MB</span>
-            </span>
-          </a>
+            </a>
+          </div>
 
           <!-- Windows -->
-          <a class="dl-card" href="https://github.com/psypeal/notesci/releases/download/v0.1.0/notesci_0.0.1_x64-setup.exe"
-             data-os="windows" data-match="setup.exe" rel="noopener">
+          <div class="dl-card" data-os="windows">
             <div class="dl-card-head">
               <span class="dl-icon" aria-hidden="true">
                 <svg viewBox="0 0 24 24" fill="currentColor">
@@ -132,31 +131,30 @@
             </div>
             <span class="dl-variant">x64 · installer (.exe)</span>
             <span class="dl-note">Self-contained — bundles PostgreSQL + Python.</span>
-            <span class="dl-cta">
+            <a class="dl-cta" data-match="setup.exe" rel="noopener"
+               href="https://github.com/psypeal/notesci/releases/download/v0.1.0/notesci_0.0.1_x64-setup.exe">
               <svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 1.5a.75.75 0 0 1 .75.75v6.69l2.22-2.22a.75.75 0 1 1 1.06 1.06l-3.5 3.5a.75.75 0 0 1-1.06 0l-3.5-3.5a.75.75 0 1 1 1.06-1.06l2.22 2.22V2.25A.75.75 0 0 1 8 1.5ZM2.75 11.5a.75.75 0 0 1 .75.75v1a.75.75 0 0 0 .75.75h7.5a.75.75 0 0 0 .75-.75v-1a.75.75 0 0 1 1.5 0v1A2.25 2.25 0 0 1 11.75 15.5h-7.5A2.25 2.25 0 0 1 2 13.25v-1a.75.75 0 0 1 .75-.75Z"/></svg>
               Download <span class="dl-size" data-size>276&nbsp;MB</span>
-            </span>
-          </a>
+            </a>
+          </div>
 
-          <!-- Linux — two distros behind a picker -->
-          <div class="dl-card-wrap dl-card--menu">
-            <button class="dl-card dl-card-trigger" type="button" data-os="linux"
+          <!-- Linux — the Download button opens a popup to pick .deb / .rpm -->
+          <div class="dl-card dl-card--menu" data-os="linux">
+            <div class="dl-card-head">
+              <span class="dl-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="currentColor" fill-rule="evenodd">
+                  <path d="M12 2c-2 0-3.4 1.7-3.4 3.9 0 .5.05.95.15 1.35-.65.5-1.05 1.25-1.05 2.1 0 .3.04.55.12.8-.95 1.1-1.98 2.55-2.68 4.1-.3.65-.85 1.95-.35 2.55.32.38.85.28 1.16.6.3.3.2.9.52 1.3.32.4.88.4 1.4.5.42.1.64.52 1.05.72.62.3 1.4.4 2.11.4.72 0 1.5-.1 2.12-.4.4-.2.63-.62 1.05-.72.52-.1 1.08-.1 1.4-.5.32-.4.22-1 .52-1.3.3-.32.84-.22 1.16-.6.5-.6-.05-1.9-.35-2.55-.7-1.55-1.73-3-2.68-4.1.08-.25.12-.5.12-.8 0-.85-.4-1.6-1.05-2.1.1-.4.15-.85.15-1.35C15.4 3.7 14 2 12 2zm-1.4 3.1a.95.95 0 1 1 0 1.9.95.95 0 0 1 0-1.9zm2.8 0a.95.95 0 1 1 0 1.9.95.95 0 0 1 0-1.9z"/>
+                </svg>
+              </span>
+              <span class="dl-os">Linux</span>
+            </div>
+            <span class="dl-variant">.deb / .rpm · x86_64</span>
+            <span class="dl-note">Debian / Ubuntu or Fedora / RHEL — pick your package.</span>
+            <button class="dl-cta dl-cta-trigger" type="button"
                     aria-haspopup="true" aria-expanded="false" aria-controls="linux-choices">
-              <span class="dl-card-head">
-                <span class="dl-icon" aria-hidden="true">
-                  <svg viewBox="0 0 24 24" fill="currentColor" fill-rule="evenodd">
-                    <path d="M12 2c-2 0-3.4 1.7-3.4 3.9 0 .5.05.95.15 1.35-.65.5-1.05 1.25-1.05 2.1 0 .3.04.55.12.8-.95 1.1-1.98 2.55-2.68 4.1-.3.65-.85 1.95-.35 2.55.32.38.85.28 1.16.6.3.3.2.9.52 1.3.32.4.88.4 1.4.5.42.1.64.52 1.05.72.62.3 1.4.4 2.11.4.72 0 1.5-.1 2.12-.4.4-.2.63-.62 1.05-.72.52-.1 1.08-.1 1.4-.5.32-.4.22-1 .52-1.3.3-.32.84-.22 1.16-.6.5-.6-.05-1.9-.35-2.55-.7-1.55-1.73-3-2.68-4.1.08-.25.12-.5.12-.8 0-.85-.4-1.6-1.05-2.1.1-.4.15-.85.15-1.35C15.4 3.7 14 2 12 2zm-1.4 3.1a.95.95 0 1 1 0 1.9.95.95 0 0 1 0-1.9zm2.8 0a.95.95 0 1 1 0 1.9.95.95 0 0 1 0-1.9z"/>
-                  </svg>
-                </span>
-                <span class="dl-os">Linux</span>
-              </span>
-              <span class="dl-variant">.deb / .rpm · x86_64</span>
-              <span class="dl-note">Debian / Ubuntu or Fedora / RHEL — pick your package.</span>
-              <span class="dl-cta">
-                <svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 1.5a.75.75 0 0 1 .75.75v6.69l2.22-2.22a.75.75 0 1 1 1.06 1.06l-3.5 3.5a.75.75 0 0 1-1.06 0l-3.5-3.5a.75.75 0 1 1 1.06-1.06l2.22 2.22V2.25A.75.75 0 0 1 8 1.5ZM2.75 11.5a.75.75 0 0 1 .75.75v1a.75.75 0 0 0 .75.75h7.5a.75.75 0 0 0 .75-.75v-1a.75.75 0 0 1 1.5 0v1A2.25 2.25 0 0 1 11.75 15.5h-7.5A2.25 2.25 0 0 1 2 13.25v-1a.75.75 0 0 1 .75-.75Z"/></svg>
-                Download
-                <svg class="dl-chevron" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M4.22 6.22a.75.75 0 0 1 1.06 0L8 8.94l2.72-2.72a.75.75 0 1 1 1.06 1.06l-3.25 3.25a.75.75 0 0 1-1.06 0L4.22 7.28a.75.75 0 0 1 0-1.06Z"/></svg>
-              </span>
+              <svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 1.5a.75.75 0 0 1 .75.75v6.69l2.22-2.22a.75.75 0 1 1 1.06 1.06l-3.5 3.5a.75.75 0 0 1-1.06 0l-3.5-3.5a.75.75 0 1 1 1.06-1.06l2.22 2.22V2.25A.75.75 0 0 1 8 1.5ZM2.75 11.5a.75.75 0 0 1 .75.75v1a.75.75 0 0 0 .75.75h7.5a.75.75 0 0 0 .75-.75v-1a.75.75 0 0 1 1.5 0v1A2.25 2.25 0 0 1 11.75 15.5h-7.5A2.25 2.25 0 0 1 2 13.25v-1a.75.75 0 0 1 .75-.75Z"/></svg>
+              Download
+              <svg class="dl-chevron" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M4.22 6.22a.75.75 0 0 1 1.06 0L8 8.94l2.72-2.72a.75.75 0 1 1 1.06 1.06l-3.25 3.25a.75.75 0 0 1-1.06 0L4.22 7.28a.75.75 0 0 1 0-1.06Z"/></svg>
             </button>
             <div class="dl-menu" id="linux-choices" role="menu" hidden>
               <a class="dl-menu-item" role="menuitem" data-match=".deb" rel="noopener"
@@ -371,18 +369,14 @@
   </footer>
 
   <script>
-    // Download section: (1) highlight the visitor's platform, and
-    // (2) progressively point each button at the *latest* release's
-    // matching asset so the page self-updates across future releases.
-    // The hardcoded hrefs are the fallback if the GitHub API is
-    // unreachable or rate-limited — nothing breaks without JS.
+    // Download section: the Linux Download button opens a .deb/.rpm popup,
+    // and each download link self-updates to the latest GitHub release
+    // (static hrefs are the no-JS / rate-limited fallback).
     (function () {
       var REPO = "psypeal/notesci";
-      var cards = [].slice.call(document.querySelectorAll(".dl-card"));
-      if (!cards.length) return;
 
-      // 1) Linux distro picker: the Linux card opens a popup of .deb / .rpm.
-      var trigger = document.querySelector(".dl-card-trigger");
+      // Linux distro picker: the Download button opens a popup of .deb / .rpm.
+      var trigger = document.querySelector(".dl-cta-trigger");
       var menu = document.getElementById("linux-choices");
       if (trigger && menu) {
         var setOpen = function (open) {
@@ -401,26 +395,7 @@
         });
       }
 
-      // 2) Detect the visitor's OS; badge that card "Recommended" + float it first.
-      var ua = navigator.userAgent || "";
-      var os = null;
-      if (/Windows|Win64|Win32/i.test(ua)) os = "windows";
-      else if (/Mac OS X|Macintosh/i.test(ua)) os = "mac";
-      else if (/Linux|X11|CrOS/i.test(ua) && !/Android/i.test(ua)) os = "linux";
-      if (os) {
-        cards.forEach(function (c) {
-          if (c.getAttribute("data-os") !== os) return;
-          c.classList.add("dl-card--rec");
-          var badge = document.createElement("span");
-          badge.className = "dl-badge";
-          badge.textContent = "Recommended";
-          c.appendChild(badge);
-          var cell = c.closest(".dl-card-wrap") || c;
-          cell.parentNode.insertBefore(cell, cell.parentNode.firstChild);
-        });
-      }
-
-      // 3) Self-updating links from the latest GitHub release.
+      // Self-updating links from the latest GitHub release.
       function fmtSize(b) {
         var mb = b / 1048576;
         return (mb < 10 ? mb.toFixed(1) : Math.round(mb)) + " MB";
