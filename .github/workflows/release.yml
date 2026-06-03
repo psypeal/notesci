@@ -264,11 +264,8 @@ jobs:
           $pg = "desktop/src-tauri/resources/pg"
           $required = @(
             "bin/postgres.exe",
-            "bin/postgres",
             "bin/initdb.exe",
-            "bin/initdb",
             "bin/pg_ctl.exe",
-            "bin/pg_ctl",
             "bin/psql.exe",
             "lib/vector.dll",
             "share/extension/vector.control"

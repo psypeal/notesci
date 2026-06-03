@@ -177,29 +177,6 @@ fn verify_embedded_pg_tree(pg_root: &Path) -> Result<(), String> {
         .map(|name| (*name).to_string())
         .collect();
 
-    if cfg!(windows) && missing.is_empty() {
-        // `initdb.exe` locates `postgres` as a sibling helper. In some
-        // Windows builds that probe is extensionless, so ship/runtime-create
-        // aliases beside the canonical `.exe` binaries.
-        for name in ["postgres", "initdb", "pg_ctl"] {
-            let alias = bin_dir.join(name);
-            if alias.exists() {
-                continue;
-            }
-            let exe = bin_dir.join(format!("{name}.exe"));
-            if exe.exists() {
-                std::fs::copy(&exe, &alias).map_err(|e| {
-                    format!("create embedded postgres helper {}: {e}", alias.display())
-                })?;
-            }
-        }
-        for name in ["postgres", "initdb", "pg_ctl"] {
-            if !bin_dir.join(name).exists() {
-                missing.push(name.to_string());
-            }
-        }
-    }
-
     if missing.is_empty() {
         return Ok(());
     }
