@@ -80,7 +80,7 @@ case "$OS" in
     windows)
         # EnterpriseDB Windows binaries archive.
         ARCHIVE="postgresql-${PG_VERSION}-1-windows-x64-binaries.zip"
-        URL="$EDB_BASE/$ARCHIVE"
+        URL="$EDB_BASE/$ARCHIVE?download=1"
         log "downloading $URL"
         download_archive "$URL" "$BUILD/$ARCHIVE"
         log "extracting"
