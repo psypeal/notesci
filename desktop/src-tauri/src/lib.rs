@@ -5,10 +5,9 @@
 //      in dev) so the spawned backend has its DB password + API keys.
 //   2. Spawns the Python backend (uvicorn) as a child process bound to
 //      127.0.0.1 on a known port (BACKEND_PORT).
-//   3. Waits for the backend's TCP port to become accept()able with a
-//      generous timeout (the FastAPI lifespan runs migrations + opens
-//      LangGraph's Postgres checkpointer pool — cold-start can be a few
-//      seconds on the first install).
+//   3. Polls /readyz until the backend is fully ready (the FastAPI
+//      lifespan runs migrations + opens LangGraph's Postgres checkpointer
+//      pool — cold-start can be a few seconds on the first install).
 //   4. Navigates the main WebView to http://127.0.0.1:<port>/ — the
 //      backend serves the React SPA from /opt/notesci/frontend via the
 //      NOTESCI_STATIC_DIR fallback that main.py wires up.
@@ -28,11 +27,15 @@ mod pg;
 
 use log::{info, warn};
 use std::collections::HashMap;
+#[cfg(windows)]
+use std::os::windows::process::CommandExt;
 use std::path::Path;
+use std::io::{Read, Write};
 use std::process::{Child, Command};
 use std::sync::Mutex;
 use std::thread;
 use std::time::{Duration, Instant};
+use std::net::{Shutdown, TcpStream};
 use tauri::menu::{Menu, MenuItem};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 use tauri::webview::WebviewBuilder;
@@ -75,6 +78,8 @@ const BACKEND_PORT: u16 = 8765;
 // usually <2s.
 const STARTUP_TIMEOUT: Duration = Duration::from_secs(120);
 const STARTUP_POLL_INTERVAL: Duration = Duration::from_millis(200);
+#[cfg(windows)]
+const CREATE_NO_WINDOW: u32 = 0x08000000;
 
 /// Tauri-managed state — owns the backend child so on_window_event can
 /// reach it to kill on exit.
@@ -158,13 +163,21 @@ pub fn run() {
 
             let pg_mode = pg::detect(&resource_dir, &user_data_dir);
             info!("pg mode: {:?}", pg_mode);
+            let mut startup_error: Option<String> = None;
             match pg::ensure_started(&pg_mode) {
                 Ok(Some(db_url)) => {
                     env_overrides.insert("DATABASE_URL".to_string(), db_url);
                 }
                 Ok(None) => {}
                 Err(err) => {
-                    warn!("embedded pg did not start: {err}");
+                    match pg_mode {
+                        pg::Mode::Embedded => {
+                            startup_error = Some(format!("embedded postgres failed: {err}"));
+                        }
+                        _ => {
+                            warn!("embedded pg did not start: {err}");
+                        }
+                    }
                 }
             }
             // Stash for kill_backend on quit. State was registered with
@@ -187,55 +200,74 @@ pub fn run() {
                 Duration::from_millis(150),
             )
             .is_ok();
-            if !already_up {
-                match spawn_backend(&layout, &env_overrides) {
-                    Ok(child) => {
-                        let state: tauri::State<BackendChild> = app.state();
-                        *state.0.lock().unwrap() = Some(child);
-                        info!(
-                            "backend spawned, waiting for {}:{}",
-                            BACKEND_HOST, BACKEND_PORT
-                        );
-                        // Block until backend is up. We don't want the WebView
-                        // loading a connection-refused page.
-                        if let Err(err) = wait_for_backend(
-                            BACKEND_HOST,
-                            BACKEND_PORT,
-                            STARTUP_TIMEOUT,
-                        ) {
-                            // Keep the app running and surface the error in logs;
-                            // this avoids dropping the window entirely when startup
-                            // is slower than expected on low-end Windows hosts.
-                            warn!("backend readiness check failed: {err}");
-                        } else {
-                            info!("backend ready");
+            if startup_error.is_none() {
+                if !already_up {
+                    match spawn_backend(&layout, &env_overrides) {
+                        Ok(child) => {
+                            let state: tauri::State<BackendChild> = app.state();
+                            *state.0.lock().unwrap() = Some(child);
+                            info!(
+                                "backend spawned, waiting for {}:{}",
+                                BACKEND_HOST, BACKEND_PORT
+                            );
+                            // Block until backend is up. We don't want the WebView
+                            // loading a connection-refused page.
+                            if let Err(err) = wait_for_backend(
+                                BACKEND_HOST,
+                                BACKEND_PORT,
+                                STARTUP_TIMEOUT,
+                            ) {
+                                warn!("backend readiness check failed: {err}");
+                                startup_error = Some(err);
+                            } else {
+                                info!("backend ready");
+                            }
+                        }
+                        Err(err) => {
+                            startup_error = Some(format!("failed to spawn backend: {err}"));
                         }
                     }
-                    Err(err) => {
-                        warn!("failed to spawn backend: {err}");
-                        warn!("app will continue without a running backend process");
+                } else {
+                    // Existing process is already listening; still wait for app
+                    // readiness so we only expose the UI once startup is complete.
+                    if let Err(err) = wait_for_backend(
+                        BACKEND_HOST,
+                        BACKEND_PORT,
+                        STARTUP_TIMEOUT,
+                    ) {
+                        warn!("backend readiness check failed: {err}");
+                        startup_error = Some(err);
+                    } else {
+                        info!("backend already running at {}:{} and ready", BACKEND_HOST, BACKEND_PORT);
                     }
                 }
-            } else {
-                info!(
-                    "backend already running at {}:{} — reusing",
-                    BACKEND_HOST, BACKEND_PORT
-                );
             }
 
-            // Point the WebView at the backend's URL and show it.
-            // The backend in local mode rewrites index.html to seed
-            // localStorage with the bootstrap session token (see
-            // _spa_fallback in backend/main.py), so the SPA sees a
-            // logged-in state on first paint — no need to do the
-            // injection from this side.
+            if startup_error.is_none() {
+                // Point the WebView at the backend's URL and show it.
+                // The backend in local mode rewrites index.html to seed
+                // localStorage with the bootstrap session token (see
+                // _spa_fallback in backend/main.py), so the SPA sees a
+                // logged-in state on first paint — no need to do the
+                // injection from this side.
+                if let Some(win) = app.get_webview_window("main") {
+                    let url = format!("http://{}:{}/", BACKEND_HOST, BACKEND_PORT);
+                    let parsed = url
+                        .parse()
+                        .map_err(|e| format!("bad backend url {url}: {e}"))?;
+                    win.navigate(parsed)
+                        .map_err(|e| format!("navigate failed: {e}"))?;
+                }
+            } else {
+                let reason = startup_error.clone().unwrap_or_else(|| "backend did not start".to_string());
+                if let Some(win) = app.get_webview_window("main") {
+                    if let Err(err) = show_startup_error_page(&win, &reason) {
+                        warn!("{err}");
+                    }
+                }
+            }
+
             if let Some(win) = app.get_webview_window("main") {
-                let url = format!("http://{}:{}/", BACKEND_HOST, BACKEND_PORT);
-                let parsed = url
-                    .parse()
-                    .map_err(|e| format!("bad backend url {url}: {e}"))?;
-                win.navigate(parsed)
-                    .map_err(|e| format!("navigate failed: {e}"))?;
                 win.show().map_err(|e| format!("show failed: {e}"))?;
             }
 
@@ -460,6 +492,8 @@ fn spawn_backend(layout: &Layout, env: &HashMap<String, String>) -> std::io::Res
     for (k, v) in env {
         cmd.env(k, v);
     }
+    #[cfg(windows)]
+    cmd.creation_flags(CREATE_NO_WINDOW);
     // Forward backend logs to the desktop process's stderr so
     // `journalctl --user -t notesci` (if the user wires it up later)
     // captures backend output too.
@@ -469,26 +503,86 @@ fn spawn_backend(layout: &Layout, env: &HashMap<String, String>) -> std::io::Res
 fn wait_for_backend(host: &str, port: u16, timeout: Duration) -> Result<(), String> {
     let addr = format!("{host}:{port}");
     let start = Instant::now();
+    let mut last_error: Option<String> = None;
     while start.elapsed() < timeout {
-        if std::net::TcpStream::connect_timeout(
-            &addr.parse().map_err(|e| format!("bad addr {addr}: {e}"))?,
-            Duration::from_millis(500),
-        )
-        .is_ok()
-        {
-            // TCP accept means uvicorn is listening — but the FastAPI
-            // lifespan handler may still be running migrations. Give
-            // the app a moment to finish before we hand the WebView
-            // off to it.
-            thread::sleep(Duration::from_millis(300));
+        if let Err(err) = wait_for_readyz(&addr) {
+            last_error = Some(err);
+        } else {
             return Ok(());
         }
         thread::sleep(STARTUP_POLL_INTERVAL);
     }
     Err(format!(
-        "backend at {addr} did not start within {:?}",
-        timeout
+        "backend at {addr} did not become ready within {:?}: {}",
+        timeout,
+        last_error.unwrap_or_else(|| "connection refused".to_string())
     ))
+}
+
+fn wait_for_readyz(addr: &str) -> Result<(), String> {
+    let mut stream = TcpStream::connect_timeout(
+        &addr.parse().map_err(|e| format!("bad addr {addr}: {e}"))?,
+        Duration::from_millis(500),
+    )
+    .map_err(|e| format!("connection failed: {e}"))?;
+    let request = format!(
+        "GET /readyz HTTP/1.1\r\nHost: {addr}\r\nConnection: close\r\nUser-Agent: notesci-desktop\r\n\r\n"
+    );
+    stream
+        .write_all(request.as_bytes())
+        .map_err(|e| format!("readyz write failed: {e}"))?;
+    let _ = stream.shutdown(Shutdown::Write);
+
+    let mut response = Vec::new();
+    let mut buf = [0u8; 2048];
+    loop {
+        let n = stream
+            .read(&mut buf)
+            .map_err(|e| format!("readyz read failed: {e}"))?;
+        if n == 0 {
+            break;
+        }
+        response.extend_from_slice(&buf[..n]);
+        if response.len() > 4096 {
+            break;
+        }
+    }
+    let response = String::from_utf8_lossy(&response);
+    let status = response.lines().next().unwrap_or("");
+
+    if status.contains("200") {
+        return Ok(());
+    }
+
+    let body = response
+        .split_once("\r\n\r\n")
+        .map(|(_, body)| body.trim())
+        .unwrap_or("");
+    Err(format!(
+        "readyz status not ready: {} (body: {})",
+        status, body
+    ))
+}
+
+fn show_startup_error_page(win: &tauri::WebviewWindow, reason: &str) -> Result<(), String> {
+    win.navigate("about:blank".parse().map_err(|e| format!("invalid about:blank url: {e}"))?)
+        .map_err(|e| format!("failed to navigate to startup error page: {e}"))?;
+    let reason_block = format!(
+        "<!doctype html><html><head><meta charset=\"utf-8\"/><title>notesci startup failed</title>\
+<style>body{{font-family:Arial,Helvetica,sans-serif;background:#fff3f0;color:#3c2a24;padding:40px;line-height:1.5;}}\
+h1{{margin:0 0 8px;font-size:24px;color:#9a342e;}}code{{word-break:break-word;background:#fff;color:#2d1b17;padding:8px 10px;border:1px solid #f2d5cf;display:block;max-width:100%;}}</style>\
+</head><body><h1>notesci could not start the backend</h1><p>The local backend did not become ready.</p>\
+<button onclick=\"window.location.reload()\" style=\"font-size:14px;padding:10px 16px;border-radius:8px;border:1px solid #c85c45;background:#cf4f3f;color:#fff;cursor:pointer;\">Retry</button>\
+<p><strong>Reason:</strong></p><code>{reason}</code><p>Check logs and retry once the issue is resolved.</p></body></html>"
+    );
+    let script = format!(
+        "document.open();document.write({});document.close();",
+        serde_json::to_string(&reason_block)
+            .map_err(|e| format!("json encode failed: {e}"))?
+    );
+    win.eval(&script)
+        .map_err(|e| format!("failed to render startup error page: {e}"))?;
+    Ok(())
 }
 
 /// Wipe per-user ``WebKitCache`` (and the
