@@ -225,7 +225,7 @@ pub fn run() {
                                     &layout.backend_log,
                                     STARTUP_LOG_TAIL_BYTES,
                                 )
-                                .unwrap_or_else(|| "(backend log unavailable)".to_string());
+                                .unwrap_or_else(|_| "(backend log unavailable)".to_string());
                                 let reason = match status {
                                     Some(exit_status) => {
                                         format!(
