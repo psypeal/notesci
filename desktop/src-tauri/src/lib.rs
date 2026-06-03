@@ -69,10 +69,11 @@ const DEV_ENV_FILE: &str = "../../backend/.env";
 const BACKEND_HOST: &str = "127.0.0.1";
 const BACKEND_PORT: u16 = 8765;
 
-// Allow up to 60s for the backend to come up — first install's
+// Allow up to 120s for the backend to come up — first Windows install can
+// spend extra time extracting embedded resources on slower machines.
 // migrations + checkpointer init dominate. Subsequent launches are
 // usually <2s.
-const STARTUP_TIMEOUT: Duration = Duration::from_secs(60);
+const STARTUP_TIMEOUT: Duration = Duration::from_secs(120);
 const STARTUP_POLL_INTERVAL: Duration = Duration::from_millis(200);
 
 /// Tauri-managed state — owns the backend child so on_window_event can
@@ -140,12 +141,12 @@ pub fn run() {
             // Bundled arm (macOS / Windows / AppImage) lives under the
             // resource dir; Installed (.deb /opt/notesci) and Dev don't
             // need it but resolve_layout takes it to probe for Bundled.
-            let layout = resolve_layout(&resource_dir);
+            let layout = resolve_layout(&resource_dir, &user_data_dir);
             info!("install layout: {:?}", layout.kind);
             // Invalidate the WebKit HTTP cache when the bundled frontend is
             // newer than last launch (so a .deb upgrade actually reaches the
             // user) — done before we navigate the WebView at the backend URL.
-            maybe_invalidate_webview_cache(&layout);
+            maybe_invalidate_webview_cache(&layout, &user_data_dir);
             // Load env (/etc/notesci/notesci.conf on the .deb, backend/.env
             // in dev, a per-user conf for Bundled) so the child inherits DB
             // password + API keys.
@@ -157,10 +158,14 @@ pub fn run() {
 
             let pg_mode = pg::detect(&resource_dir, &user_data_dir);
             info!("pg mode: {:?}", pg_mode);
-            if let Some(db_url) = pg::ensure_started(&pg_mode)
-                .map_err(|e| format!("embedded pg: {e}"))?
-            {
-                env_overrides.insert("DATABASE_URL".to_string(), db_url);
+            match pg::ensure_started(&pg_mode) {
+                Ok(Some(db_url)) => {
+                    env_overrides.insert("DATABASE_URL".to_string(), db_url);
+                }
+                Ok(None) => {}
+                Err(err) => {
+                    warn!("embedded pg did not start: {err}");
+                }
             }
             // Stash for kill_backend on quit. State was registered with
             // Mode::System; replace with the detected mode.
@@ -183,25 +188,40 @@ pub fn run() {
             )
             .is_ok();
             if !already_up {
-                let child = spawn_backend(&layout, &env_overrides)
-                    .map_err(|e| format!("failed to spawn backend: {e}"))?;
-                let state: tauri::State<BackendChild> = app.state();
-                *state.0.lock().unwrap() = Some(child);
-                info!(
-                    "backend spawned, waiting for {}:{}",
-                    BACKEND_HOST, BACKEND_PORT
-                );
-                // Block until backend is up. We don't want the WebView
-                // loading a connection-refused page.
-                wait_for_backend(BACKEND_HOST, BACKEND_PORT, STARTUP_TIMEOUT)
-                    .map_err(|e| format!("backend never became ready: {e}"))?;
+                match spawn_backend(&layout, &env_overrides) {
+                    Ok(child) => {
+                        let state: tauri::State<BackendChild> = app.state();
+                        *state.0.lock().unwrap() = Some(child);
+                        info!(
+                            "backend spawned, waiting for {}:{}",
+                            BACKEND_HOST, BACKEND_PORT
+                        );
+                        // Block until backend is up. We don't want the WebView
+                        // loading a connection-refused page.
+                        if let Err(err) = wait_for_backend(
+                            BACKEND_HOST,
+                            BACKEND_PORT,
+                            STARTUP_TIMEOUT,
+                        ) {
+                            // Keep the app running and surface the error in logs;
+                            // this avoids dropping the window entirely when startup
+                            // is slower than expected on low-end Windows hosts.
+                            warn!("backend readiness check failed: {err}");
+                        } else {
+                            info!("backend ready");
+                        }
+                    }
+                    Err(err) => {
+                        warn!("failed to spawn backend: {err}");
+                        warn!("app will continue without a running backend process");
+                    }
+                }
             } else {
                 info!(
                     "backend already running at {}:{} — reusing",
                     BACKEND_HOST, BACKEND_PORT
                 );
             }
-            info!("backend ready");
 
             // Point the WebView at the backend's URL and show it.
             // The backend in local mode rewrites index.html to seed
@@ -319,11 +339,8 @@ struct Layout {
     local_token: std::path::PathBuf,
 }
 
-fn resolve_layout(resource_dir: &Path) -> Layout {
-    let data_dir = dirs_xdg_data_home()
-        .map(|p| p.join("com.notesci.app"))
-        .unwrap_or_else(|| std::path::PathBuf::from("/tmp/com.notesci.app"));
-    let local_token = data_dir.join(TOKEN_FILENAME);
+fn resolve_layout(resource_dir: &Path, user_data_dir: &Path) -> Layout {
+    let local_token = user_data_dir.join(TOKEN_FILENAME);
 
     // 1. Installed (.deb): system venv at /opt/notesci. Checked first so
     //    the Debian path is never shadowed by a stray bundled tree.
@@ -359,7 +376,7 @@ fn resolve_layout(resource_dir: &Path) -> Layout {
             // No /etc/notesci on macOS/Windows/AppImage; embedded PG (pg.rs)
             // supplies DATABASE_URL via env_overrides, API keys come from a
             // per-user conf created on demand under the data dir.
-            env_file: data_dir.join("notesci.conf"),
+            env_file: user_data_dir.join("notesci.conf"),
             local_token,
         };
     }
@@ -474,7 +491,7 @@ fn wait_for_backend(host: &str, port: u16, timeout: Duration) -> Result<(), Stri
     ))
 }
 
-/// Wipe ``$XDG_DATA_HOME/com.notesci.app/WebKitCache`` (and the
+/// Wipe per-user ``WebKitCache`` (and the
 /// CacheStorage sibling) when the bundled frontend has changed since
 /// the last launch. WebKitGTK uses heuristic caching when responses
 /// lack ``Cache-Control`` headers, which means upgrading the .deb
@@ -483,7 +500,7 @@ fn wait_for_backend(host: &str, port: u16, timeout: Duration) -> Result<(), Stri
 /// ``index.html`` mtime against a marker file we write each launch;
 /// when the on-disk file is newer, drop the cache before the WebView
 /// initialises so the next fetch repopulates from the new bundle.
-fn maybe_invalidate_webview_cache(layout: &Layout) {
+fn maybe_invalidate_webview_cache(layout: &Layout, user_data_dir: &Path) {
     let index = layout.static_dir.join("index.html");
     let Ok(meta) = std::fs::metadata(&index) else {
         return;
@@ -491,10 +508,7 @@ fn maybe_invalidate_webview_cache(layout: &Layout) {
     let Ok(current_mtime) = meta.modified() else {
         return;
     };
-    let data_dir = match dirs_xdg_data_home() {
-        Some(p) => p.join("com.notesci.app"),
-        None => return,
-    };
+    let data_dir = user_data_dir;
     let marker = data_dir.join(".frontend-mtime");
     let recorded = std::fs::read_to_string(&marker).ok();
     let current_stamp = match current_mtime.duration_since(std::time::UNIX_EPOCH) {
@@ -516,20 +530,6 @@ fn maybe_invalidate_webview_cache(layout: &Layout) {
     }
     let _ = std::fs::create_dir_all(&data_dir);
     let _ = std::fs::write(&marker, current_stamp);
-}
-
-/// $XDG_DATA_HOME or its default ``$HOME/.local/share``. Minimal
-/// inline impl so we don't pull in the ``dirs`` crate just for one
-/// lookup.
-fn dirs_xdg_data_home() -> Option<std::path::PathBuf> {
-    if let Ok(v) = std::env::var("XDG_DATA_HOME") {
-        if !v.is_empty() {
-            return Some(std::path::PathBuf::from(v));
-        }
-    }
-    std::env::var("HOME")
-        .ok()
-        .map(|h| std::path::PathBuf::from(h).join(".local").join("share"))
 }
 
 /// Save a binary blob into a user-chosen folder via the OS folder dialog.
