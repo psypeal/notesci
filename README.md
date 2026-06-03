@@ -162,4 +162,5 @@ matching GitHub Release.
 
 ## License
 
-This project is open source. See the repository license file for terms.
+notesci is open source under the Apache License 2.0. See `LICENSE` for
+the full license text.
