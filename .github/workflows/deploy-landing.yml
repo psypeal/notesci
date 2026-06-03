@@ -1,0 +1,47 @@
+# Auto-deploy the notesci.com landing site to Cloudflare Pages.
+#
+# Runs on every push to `main` that touches `landing/` (or this file)
+# and uploads `landing/` to the EXISTING Direct-Upload Pages project via
+# `wrangler pages deploy`. No project recreation, no custom-domain move,
+# no downtime — it just publishes a new deployment to the same project.
+#
+# ── One-time setup (details in cloudflare-setting/pages-git-deploy.md) ──
+#   Secret   CLOUDFLARE_API_TOKEN   custom token, scope: Account › Cloudflare Pages › Edit
+#   Secret   CLOUDFLARE_ACCOUNT_ID  your Cloudflare account ID
+#   Variable CF_PAGES_PROJECT       the Pages project name (the slug, e.g. "notesci")
+#
+# The job is SKIPPED until CF_PAGES_PROJECT is set, so adding this file
+# won't produce a red run. After setting the secrets + variable, use the
+# "Run workflow" button (workflow_dispatch) to fire the first deploy.
+
+name: deploy-landing
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'landing/**'
+      - '.github/workflows/deploy-landing.yml'
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    name: Deploy landing/ to Cloudflare Pages
+    runs-on: ubuntu-latest
+    # Don't run (and fail) until the project name is configured.
+    if: ${{ vars.CF_PAGES_PROJECT != '' }}
+    permissions:
+      contents: read
+      deployments: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Publish to Cloudflare Pages
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          # `--branch=main` forces a PRODUCTION deploy (notesci.com),
+          # provided the project's production branch is `main` (the
+          # default). If yours differs, change it here.
+          command: pages deploy landing --project-name=${{ vars.CF_PAGES_PROJECT }} --branch=main
