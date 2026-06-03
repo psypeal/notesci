@@ -19,6 +19,7 @@ Deploy (what .github/workflows/deploy-landing.yml does):
       -F 'metadata={"main_module":"worker.mjs","compatibility_date":"2026-05-01"};type=application/json' \
       -F 'worker.mjs=@worker.mjs;filename=worker.mjs;type=application/javascript+module'
 """
+import hashlib
 import json
 import os
 import sys
@@ -44,6 +45,16 @@ FAVICON = read("favicon.svg")
 APPLE_ICON = read("apple-touch-icon.svg")
 
 assert "id=\"download\"" in HTML, "landing/index.html is missing the download section"
+
+# Cache-bust the stylesheet: link it with a short content hash so a freshly
+# deployed HTML never pairs with a stale, cached styles.css (HTML is cached
+# 5 min, CSS 1 h — without this they can drift and the new markup renders
+# unstyled). The worker routes by URL pathname, so the ?v= query is ignored
+# for routing but forces browsers to refetch CSS whenever its content changes.
+_css_ver = hashlib.sha256(CSS.encode("utf-8")).hexdigest()[:10]
+_n = HTML.count('href="/styles.css"')
+assert _n == 1, f"expected exactly one /styles.css link to version, found {_n}"
+HTML = HTML.replace('href="/styles.css"', f'href="/styles.css?v={_css_ver}"')
 
 worker = (
     "const HTML = " + js(HTML) + ";\n"
