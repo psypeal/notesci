@@ -6,8 +6,8 @@
   "build": {
     "frontendDist": "../../frontend/dist",
     "devUrl": "http://localhost:5173",
-    "beforeDevCommand": "node scripts/tauri-frontend.mjs dev",
-    "beforeBuildCommand": "node scripts/tauri-frontend.mjs build"
+    "beforeDevCommand": "node src-tauri/scripts/tauri-frontend.mjs dev || node scripts/tauri-frontend.mjs dev",
+    "beforeBuildCommand": "node src-tauri/scripts/tauri-frontend.mjs build || node scripts/tauri-frontend.mjs build"
   },
   "app": {
     "withGlobalTauri": true,
