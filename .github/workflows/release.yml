@@ -24,7 +24,7 @@ on:
       version:
         description: 'Version tag (e.g. v0.1.0); only used by manual runs'
         required: false
-        default: 'v0.0.1-dev'
+        default: ''
 
 env:
   PG_VERSION: "16.4"
@@ -297,12 +297,13 @@ jobs:
           if-no-files-found: warn
 
   # ─────────────────────────────────────────────────────────────
-  # Optional: attach all bundles to the GitHub Release for a tag push.
-  # No-op on workflow_dispatch (no tag context).
+  # Attach all bundles to the GitHub Release. Manual runs now synthesize a
+  # release tag automatically so artifacts are published without extra steps.
   # ─────────────────────────────────────────────────────────────
   release:
     name: Attach to Release
-    if: startsWith(github.ref, 'refs/tags/v')
+    # Always attach artifacts after successful platform builds. For manual runs,
+    # a tag is synthesized from the provided version input or fallback run id.
     needs: [linux, macos, windows]
     runs-on: ubuntu-latest
     permissions:
@@ -312,11 +313,31 @@ jobs:
         with:
           path: artifacts
 
+      - name: Resolve release tag
+        id: release_tag
+        shell: bash
+        run: |
+          VERSION="${{ github.ref_name }}"
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            VERSION="${{ github.event.inputs.version }}"
+            if [ -z "$VERSION" ]; then
+              VERSION="dev-${GITHUB_RUN_ID}"
+            fi
+          fi
+          if [ -z "$VERSION" ]; then
+            VERSION="${GITHUB_REF_NAME}"
+          fi
+          case "$VERSION" in
+            v*) TAG="$VERSION" ;;
+            *) TAG="v$VERSION" ;;
+          esac
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+
       - name: Create / update GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ github.ref_name }}
-          name: ${{ github.ref_name }}
+          tag_name: ${{ steps.release_tag.outputs.tag }}
+          name: ${{ steps.release_tag.outputs.tag }}
           generate_release_notes: true
           files: |
             artifacts/linux-bundles/**/*
