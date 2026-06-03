@@ -206,10 +206,35 @@ h1 em {
   .eyebrow { margin-bottom: 18px; }
 }
 
+/* Action button rows — equal-width buttons so each group reads as a tidy,
+   consistent set (minmax(0,1fr) keeps them from overflowing on narrow widths). */
 .cta-row {
-  display: flex;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 12px;
-  flex-wrap: wrap;
+  max-width: 430px;
+}
+
+.os-actions {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 22px;
+  max-width: 600px;
+}
+
+.cta-row .btn,
+.os-actions .btn {
+  width: 100%;
+  justify-content: center;
+}
+
+@media (max-width: 560px) {
+  .cta-row,
+  .os-actions {
+    grid-template-columns: 1fr;
+    max-width: 360px;
+  }
 }
 
 .btn {
