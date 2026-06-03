@@ -91,10 +91,10 @@
         <h2>Get the desktop app.</h2>
         <div class="prose">
           <p>
-            notesci runs entirely on your own machine. The macOS, Windows, and Linux
-            <code class="code-inline">.rpm</code> builds bundle everything they need —
-            PostgreSQL and the Python runtime included — so there's no Docker, no server,
-            and nothing to configure before first launch.
+            notesci runs entirely on your own machine — no server, no Docker. The macOS,
+            Windows, and Linux (Fedora/RHEL <code class="code-inline">.rpm</code>) builds bundle
+            everything they need, PostgreSQL and the Python runtime included; the lightweight
+            Debian/Ubuntu <code class="code-inline">.deb</code> uses your system PostgreSQL.
           </p>
         </div>
 
@@ -138,43 +138,39 @@
             </span>
           </a>
 
-          <!-- Linux .deb -->
-          <a class="dl-card" href="https://github.com/psypeal/notesci/releases/download/v0.1.0/notesci_0.0.1_amd64.deb"
-             data-os="deb" data-match=".deb" rel="noopener">
-            <div class="dl-card-head">
-              <span class="dl-icon" aria-hidden="true">
-                <svg viewBox="0 0 24 24" fill="currentColor" fill-rule="evenodd">
-                  <path d="M12 2c-2 0-3.4 1.7-3.4 3.9 0 .5.05.95.15 1.35-.65.5-1.05 1.25-1.05 2.1 0 .3.04.55.12.8-.95 1.1-1.98 2.55-2.68 4.1-.3.65-.85 1.95-.35 2.55.32.38.85.28 1.16.6.3.3.2.9.52 1.3.32.4.88.4 1.4.5.42.1.64.52 1.05.72.62.3 1.4.4 2.11.4.72 0 1.5-.1 2.12-.4.4-.2.63-.62 1.05-.72.52-.1 1.08-.1 1.4-.5.32-.4.22-1 .52-1.3.3-.32.84-.22 1.16-.6.5-.6-.05-1.9-.35-2.55-.7-1.55-1.73-3-2.68-4.1.08-.25.12-.5.12-.8 0-.85-.4-1.6-1.05-2.1.1-.4.15-.85.15-1.35C15.4 3.7 14 2 12 2zm-1.4 3.1a.95.95 0 1 1 0 1.9.95.95 0 0 1 0-1.9zm2.8 0a.95.95 0 1 1 0 1.9.95.95 0 0 1 0-1.9z"/>
-                </svg>
+          <!-- Linux — two distros behind a picker -->
+          <div class="dl-card-wrap dl-card--menu">
+            <button class="dl-card dl-card-trigger" type="button" data-os="linux"
+                    aria-haspopup="true" aria-expanded="false" aria-controls="linux-choices">
+              <span class="dl-card-head">
+                <span class="dl-icon" aria-hidden="true">
+                  <svg viewBox="0 0 24 24" fill="currentColor" fill-rule="evenodd">
+                    <path d="M12 2c-2 0-3.4 1.7-3.4 3.9 0 .5.05.95.15 1.35-.65.5-1.05 1.25-1.05 2.1 0 .3.04.55.12.8-.95 1.1-1.98 2.55-2.68 4.1-.3.65-.85 1.95-.35 2.55.32.38.85.28 1.16.6.3.3.2.9.52 1.3.32.4.88.4 1.4.5.42.1.64.52 1.05.72.62.3 1.4.4 2.11.4.72 0 1.5-.1 2.12-.4.4-.2.63-.62 1.05-.72.52-.1 1.08-.1 1.4-.5.32-.4.22-1 .52-1.3.3-.32.84-.22 1.16-.6.5-.6-.05-1.9-.35-2.55-.7-1.55-1.73-3-2.68-4.1.08-.25.12-.5.12-.8 0-.85-.4-1.6-1.05-2.1.1-.4.15-.85.15-1.35C15.4 3.7 14 2 12 2zm-1.4 3.1a.95.95 0 1 1 0 1.9.95.95 0 0 1 0-1.9zm2.8 0a.95.95 0 1 1 0 1.9.95.95 0 0 1 0-1.9z"/>
+                  </svg>
+                </span>
+                <span class="dl-os">Linux</span>
               </span>
-              <span class="dl-os">Linux</span>
-            </div>
-            <span class="dl-variant">.deb · Debian / Ubuntu · x86_64</span>
-            <span class="dl-note">Lightweight — uses system PostgreSQL&nbsp;16 + pgvector.</span>
-            <span class="dl-cta">
-              <svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 1.5a.75.75 0 0 1 .75.75v6.69l2.22-2.22a.75.75 0 1 1 1.06 1.06l-3.5 3.5a.75.75 0 0 1-1.06 0l-3.5-3.5a.75.75 0 1 1 1.06-1.06l2.22 2.22V2.25A.75.75 0 0 1 8 1.5ZM2.75 11.5a.75.75 0 0 1 .75.75v1a.75.75 0 0 0 .75.75h7.5a.75.75 0 0 0 .75-.75v-1a.75.75 0 0 1 1.5 0v1A2.25 2.25 0 0 1 11.75 15.5h-7.5A2.25 2.25 0 0 1 2 13.25v-1a.75.75 0 0 1 .75-.75Z"/></svg>
-              Download <span class="dl-size" data-size>3.3&nbsp;MB</span>
-            </span>
-          </a>
-
-          <!-- Linux .rpm -->
-          <a class="dl-card" href="https://github.com/psypeal/notesci/releases/download/v0.1.0/notesci-0.0.1-1.x86_64.rpm"
-             data-os="rpm" data-match=".rpm" rel="noopener">
-            <div class="dl-card-head">
-              <span class="dl-icon" aria-hidden="true">
-                <svg viewBox="0 0 24 24" fill="currentColor" fill-rule="evenodd">
-                  <path d="M12 2c-2 0-3.4 1.7-3.4 3.9 0 .5.05.95.15 1.35-.65.5-1.05 1.25-1.05 2.1 0 .3.04.55.12.8-.95 1.1-1.98 2.55-2.68 4.1-.3.65-.85 1.95-.35 2.55.32.38.85.28 1.16.6.3.3.2.9.52 1.3.32.4.88.4 1.4.5.42.1.64.52 1.05.72.62.3 1.4.4 2.11.4.72 0 1.5-.1 2.12-.4.4-.2.63-.62 1.05-.72.52-.1 1.08-.1 1.4-.5.32-.4.22-1 .52-1.3.3-.32.84-.22 1.16-.6.5-.6-.05-1.9-.35-2.55-.7-1.55-1.73-3-2.68-4.1.08-.25.12-.5.12-.8 0-.85-.4-1.6-1.05-2.1.1-.4.15-.85.15-1.35C15.4 3.7 14 2 12 2zm-1.4 3.1a.95.95 0 1 1 0 1.9.95.95 0 0 1 0-1.9zm2.8 0a.95.95 0 1 1 0 1.9.95.95 0 0 1 0-1.9z"/>
-                </svg>
+              <span class="dl-variant">.deb / .rpm · x86_64</span>
+              <span class="dl-note">Debian / Ubuntu or Fedora / RHEL — pick your package.</span>
+              <span class="dl-cta">
+                <svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 1.5a.75.75 0 0 1 .75.75v6.69l2.22-2.22a.75.75 0 1 1 1.06 1.06l-3.5 3.5a.75.75 0 0 1-1.06 0l-3.5-3.5a.75.75 0 1 1 1.06-1.06l2.22 2.22V2.25A.75.75 0 0 1 8 1.5ZM2.75 11.5a.75.75 0 0 1 .75.75v1a.75.75 0 0 0 .75.75h7.5a.75.75 0 0 0 .75-.75v-1a.75.75 0 0 1 1.5 0v1A2.25 2.25 0 0 1 11.75 15.5h-7.5A2.25 2.25 0 0 1 2 13.25v-1a.75.75 0 0 1 .75-.75Z"/></svg>
+                Download
+                <svg class="dl-chevron" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M4.22 6.22a.75.75 0 0 1 1.06 0L8 8.94l2.72-2.72a.75.75 0 1 1 1.06 1.06l-3.25 3.25a.75.75 0 0 1-1.06 0L4.22 7.28a.75.75 0 0 1 0-1.06Z"/></svg>
               </span>
-              <span class="dl-os">Linux</span>
+            </button>
+            <div class="dl-menu" id="linux-choices" role="menu" hidden>
+              <a class="dl-menu-item" role="menuitem" data-match=".deb" rel="noopener"
+                 href="https://github.com/psypeal/notesci/releases/download/v0.1.0/notesci_0.0.1_amd64.deb">
+                <span class="dl-menu-title">Debian / Ubuntu <span class="dl-menu-ext">.deb</span></span>
+                <span class="dl-menu-sub">Uses system PostgreSQL&nbsp;16 + pgvector · <span data-size>3.3&nbsp;MB</span></span>
+              </a>
+              <a class="dl-menu-item" role="menuitem" data-match=".rpm" rel="noopener"
+                 href="https://github.com/psypeal/notesci/releases/download/v0.1.0/notesci-0.0.1-1.x86_64.rpm">
+                <span class="dl-menu-title">Fedora / RHEL <span class="dl-menu-ext">.rpm</span></span>
+                <span class="dl-menu-sub">Self-contained — bundles PostgreSQL + Python · <span data-size>377&nbsp;MB</span></span>
+              </a>
             </div>
-            <span class="dl-variant">.rpm · Fedora / RHEL · x86_64</span>
-            <span class="dl-note">Self-contained — bundles PostgreSQL + Python.</span>
-            <span class="dl-cta">
-              <svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 1.5a.75.75 0 0 1 .75.75v6.69l2.22-2.22a.75.75 0 1 1 1.06 1.06l-3.5 3.5a.75.75 0 0 1-1.06 0l-3.5-3.5a.75.75 0 1 1 1.06-1.06l2.22 2.22V2.25A.75.75 0 0 1 8 1.5ZM2.75 11.5a.75.75 0 0 1 .75.75v1a.75.75 0 0 0 .75.75h7.5a.75.75 0 0 0 .75-.75v-1a.75.75 0 0 1 1.5 0v1A2.25 2.25 0 0 1 11.75 15.5h-7.5A2.25 2.25 0 0 1 2 13.25v-1a.75.75 0 0 1 .75-.75Z"/></svg>
-              Download <span class="dl-size" data-size>377&nbsp;MB</span>
-            </span>
-          </a>
+          </div>
         </div>
 
         <p class="dl-foot">
@@ -374,14 +370,32 @@
       var cards = [].slice.call(document.querySelectorAll(".dl-card"));
       if (!cards.length) return;
 
-      // 1) Detect OS → mark the matching card "Recommended" and float it first.
+      // 1) Linux distro picker: the Linux card opens a popup of .deb / .rpm.
+      var trigger = document.querySelector(".dl-card-trigger");
+      var menu = document.getElementById("linux-choices");
+      if (trigger && menu) {
+        var setOpen = function (open) {
+          trigger.setAttribute("aria-expanded", open ? "true" : "false");
+          menu.hidden = !open;
+        };
+        trigger.addEventListener("click", function () { setOpen(menu.hidden); });
+        document.addEventListener("click", function (e) {
+          if (!menu.hidden && !menu.contains(e.target) && !trigger.contains(e.target)) setOpen(false);
+        });
+        document.addEventListener("keydown", function (e) {
+          if (e.key === "Escape" && !menu.hidden) { setOpen(false); trigger.focus(); }
+        });
+        menu.addEventListener("click", function (e) {
+          if (e.target.closest("a")) setOpen(false);
+        });
+      }
+
+      // 2) Detect the visitor's OS; badge that card "Recommended" + float it first.
       var ua = navigator.userAgent || "";
       var os = null;
       if (/Windows|Win64|Win32/i.test(ua)) os = "windows";
       else if (/Mac OS X|Macintosh/i.test(ua)) os = "mac";
-      else if (/Linux|X11|CrOS/i.test(ua) && !/Android/i.test(ua)) {
-        os = /Fedora|Red Hat|CentOS|SUSE|RPM/i.test(ua) ? "rpm" : "deb";
-      }
+      else if (/Linux|X11|CrOS/i.test(ua) && !/Android/i.test(ua)) os = "linux";
       if (os) {
         cards.forEach(function (c) {
           if (c.getAttribute("data-os") !== os) return;
@@ -390,15 +404,17 @@
           badge.className = "dl-badge";
           badge.textContent = "Recommended";
           c.appendChild(badge);
-          c.parentNode.insertBefore(c, c.parentNode.firstChild);
+          var cell = c.closest(".dl-card-wrap") || c;
+          cell.parentNode.insertBefore(cell, cell.parentNode.firstChild);
         });
       }
 
-      // 2) Self-updating links via the public GitHub releases API.
+      // 3) Self-updating links from the latest GitHub release.
       function fmtSize(b) {
         var mb = b / 1048576;
         return (mb < 10 ? mb.toFixed(1) : Math.round(mb)) + " MB";
       }
+      var dlEls = [].slice.call(document.querySelectorAll("[data-match]"));
       try {
         fetch("https://api.github.com/repos/" + REPO + "/releases/latest", {
           headers: { Accept: "application/vnd.github+json" }
@@ -406,15 +422,15 @@
           .then(function (r) { return r.ok ? r.json() : null; })
           .then(function (rel) {
             if (!rel || !rel.assets || !rel.assets.length) return;
-            cards.forEach(function (c) {
-              var token = (c.getAttribute("data-match") || "").toLowerCase();
+            dlEls.forEach(function (el) {
+              var token = (el.getAttribute("data-match") || "").toLowerCase();
               if (!token) return;
               var asset = rel.assets.filter(function (a) {
                 return a.name.toLowerCase().indexOf(token) !== -1;
               })[0];
               if (!asset) return;
-              c.setAttribute("href", asset.browser_download_url);
-              var sizeEl = c.querySelector("[data-size]");
+              el.setAttribute("href", asset.browser_download_url);
+              var sizeEl = el.querySelector("[data-size]");
               if (sizeEl) sizeEl.textContent = fmtSize(asset.size);
             });
             var vlink = document.getElementById("dl-version-link");
