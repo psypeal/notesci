@@ -31,6 +31,30 @@ DEST="$BUILD/$OS"
 
 log() { printf '\n\033[1m==> %s\033[0m\n' "$*"; }
 
+download_archive() {
+    local url="$1"
+    local out="$2"
+
+    if curl -fL --retry 5 --retry-all-errors --connect-timeout 30 \
+        --user-agent "Mozilla/5.0 notesci-release-build" \
+        -H "Accept: application/zip,application/octet-stream,*/*" \
+        -o "$out" "$url"; then
+        return 0
+    fi
+
+    if command -v powershell.exe >/dev/null 2>&1; then
+        local out_win="$out"
+        if command -v cygpath >/dev/null 2>&1; then
+            out_win="$(cygpath -w "$out")"
+        fi
+        log "curl failed; retrying download with PowerShell"
+        DOWNLOAD_URL="$url" DOWNLOAD_OUT="$out_win" powershell.exe -NoProfile -Command "\$ErrorActionPreference = 'Stop'; [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; Invoke-WebRequest -Uri \$env:DOWNLOAD_URL -OutFile \$env:DOWNLOAD_OUT -Headers @{ 'User-Agent' = 'Mozilla/5.0 notesci-release-build'; 'Accept' = 'application/zip,application/octet-stream,*/*' }"
+        return 0
+    fi
+
+    return 1
+}
+
 if [[ -d "$DEST/bin" ]] && [[ -x "$DEST/bin/postgres" || -x "$DEST/bin/postgres.exe" ]]; then
     log "$OS PG tree already at $DEST — skipping"
     exit 0
@@ -45,7 +69,7 @@ case "$OS" in
         ARCHIVE="postgresql-${PG_VERSION}-1-osx-binaries.zip"
         URL="$EDB_BASE/$ARCHIVE"
         log "downloading $URL"
-        curl -fL --retry 3 -o "$BUILD/$ARCHIVE" "$URL"
+        download_archive "$URL" "$BUILD/$ARCHIVE"
         log "extracting"
         ( cd "$BUILD" && unzip -q -o "$ARCHIVE" )
         # The zip lays out as `pgsql/{bin,lib,...}` — flatten into $DEST.
@@ -58,7 +82,7 @@ case "$OS" in
         ARCHIVE="postgresql-${PG_VERSION}-1-windows-x64-binaries.zip"
         URL="$EDB_BASE/$ARCHIVE"
         log "downloading $URL"
-        curl -fL --retry 3 -o "$BUILD/$ARCHIVE" "$URL"
+        download_archive "$URL" "$BUILD/$ARCHIVE"
         log "extracting"
         ( cd "$BUILD" && unzip -q -o "$ARCHIVE" )
         mv "$BUILD/pgsql"/* "$DEST/"
