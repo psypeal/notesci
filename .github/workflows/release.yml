@@ -1,7 +1,7 @@
 # Multi-platform release builds — notesci.
 #
 # Triggered on push of a `v*` tag (e.g. `v0.1.0`) or manually. Builds:
-#   - Linux:   .deb, .rpm, .AppImage (AppImage embeds PG + pgvector)
+#   - Linux:   .deb, .rpm (plus best-effort .AppImage)
 #   - macOS:   .dmg (universal — bundle includes PG + pgvector dylib)
 #   - Windows: .exe NSIS installer (bundle includes PG + pgvector dll)
 #
@@ -36,13 +36,14 @@ env:
 
 jobs:
   # ─────────────────────────────────────────────────────────────
-  # Linux: .deb (no embedded PG), .rpm, .AppImage (embedded PG)
+  # Linux: .deb (no embedded PG), .rpm, best-effort .AppImage (embedded PG)
   # Runs on Ubuntu 24.04 because the desktop package depends on
   # python3.12 and WebKitGTK 4.1, which are native Noble packages.
-  # Older distros can use the .AppImage fallback.
+  # AppImage packaging depends on upstream linuxdeploy AppImage tooling and is
+  # intentionally non-blocking until that path is reliable on GitHub runners.
   # ─────────────────────────────────────────────────────────────
   linux:
-    name: Linux (deb / rpm / AppImage)
+    name: Linux (deb / rpm / AppImage best-effort)
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     steps:
@@ -111,8 +112,17 @@ jobs:
           rm -rf "$R/backend"  && cp -r build/backend-bundle "$R/backend"
           rm -rf "$R/frontend" && cp -r frontend/dist        "$R/frontend"
 
-      # .rpm + .AppImage embed PG + Python (Mode::Embedded / Bundled layout).
-      - name: Build .rpm + .AppImage (embedded Postgres + Python)
+      # .rpm embeds PG + Python (Mode::Embedded / Bundled layout).
+      - name: Build .rpm (embedded Postgres + Python)
+        run: |
+          cd desktop/src-tauri
+          cargo tauri build --bundles rpm
+
+      # AppImage uses linuxdeploy's AppImage binaries, which are brittle on
+      # GitHub-hosted Ubuntu runners. Keep attempting it, but do not block
+      # the release packages users can install today.
+      - name: Build .AppImage (best effort)
+        continue-on-error: true
         env:
           # GitHub-hosted Linux runners do not reliably expose FUSE to nested
           # AppImage tooling. Extraction mode avoids a linuxdeploy startup
@@ -120,7 +130,7 @@ jobs:
           APPIMAGE_EXTRACT_AND_RUN: "1"
         run: |
           cd desktop/src-tauri
-          cargo tauri build --bundles rpm,appimage
+          cargo tauri build --bundles appimage
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
