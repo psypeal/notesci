@@ -74,22 +74,37 @@ case "$OS" in
         need_dpkg() { command -v "$1" >/dev/null || { echo "missing: $1" >&2; exit 1; }; }
         need_dpkg dpkg-deb
         need_dpkg apt-get
+        need_dpkg apt-cache
 
         TMP="$BUILD/.linux-stage"
         rm -rf "$TMP" && mkdir -p "$TMP"
         # `apt-get download` pulls the .deb into cwd without installing.
         (
             cd "$TMP"
+            download_ubuntu_pkg() {
+                local pkg="$1"
+                local version
+                version="$(apt-cache madison "$pkg" | awk '$3 ~ /ubuntu/ { print $3; exit }')"
+                if [[ -n "$version" ]]; then
+                    apt-get download "$pkg=$version"
+                else
+                    apt-get download "$pkg"
+                fi
+            }
+
             ICU_PKG="$(apt-cache search libicu | awk '$1 ~ /^libicu[0-9]+$/ {print $1}' | sort -V | tail -n 1)"
             if [[ -z "$ICU_PKG" ]]; then
                 echo "failed to resolve ICU package (expected libicu<version>)" >&2
                 exit 1
             fi
 
-            apt-get download \
-                postgresql-16 postgresql-client-16 \
-                libpq5 libxslt1.1 libxml2 "$ICU_PKG"
-            if apt-get download postgresql-server-dev-16; then
+            download_ubuntu_pkg postgresql-16
+            download_ubuntu_pkg postgresql-client-16
+            download_ubuntu_pkg libpq5
+            download_ubuntu_pkg libxslt1.1
+            download_ubuntu_pkg libxml2
+            download_ubuntu_pkg "$ICU_PKG"
+            if download_ubuntu_pkg postgresql-server-dev-16; then
                 true
             else
                 echo "warning: postgresql-server-dev-16 not available; using existing system headers" >&2

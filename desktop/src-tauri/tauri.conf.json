@@ -6,8 +6,8 @@
   "build": {
     "frontendDist": "../../frontend/dist",
     "devUrl": "http://localhost:5173",
-    "beforeDevCommand": "node -e \"const fs=require('fs');const path=require('path');const {execSync}=require('child_process');let cwd=process.cwd();for(let i=0;i<10;i++){const frontendDir=path.join(cwd,'frontend');if(fs.existsSync(path.join(frontendDir,'package.json'))){execSync('pnpm -C '+frontendDir+' dev',{stdio:'inherit'});process.exit(0);}const next=path.dirname(cwd);if(next===cwd)break;cwd=next;}console.error('Cannot locate frontend package.json for Tauri dev');process.exit(1);\"",
-    "beforeBuildCommand": "node -e \"const fs=require('fs');const path=require('path');const {execSync}=require('child_process');let cwd=process.cwd();for(let i=0;i<10;i++){const frontendDir=path.join(cwd,'frontend');if(fs.existsSync(path.join(frontendDir,'package.json'))){execSync('pnpm -C '+frontendDir+' build',{stdio:'inherit'});process.exit(0);}const next=path.dirname(cwd);if(next===cwd)break;cwd=next;}console.error('Cannot locate frontend package.json for Tauri build');process.exit(1);\""
+    "beforeDevCommand": "node scripts/tauri-frontend.mjs dev",
+    "beforeBuildCommand": "node scripts/tauri-frontend.mjs build"
   },
   "app": {
     "withGlobalTauri": true,
