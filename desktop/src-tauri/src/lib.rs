@@ -5,13 +5,14 @@
 //      in dev) so the spawned backend has its DB password + API keys.
 //   2. Spawns the Python backend (uvicorn) as a child process bound to
 //      127.0.0.1 on a known port (BACKEND_PORT).
-//   3. Polls /readyz until the backend is fully ready (the FastAPI
+//   3. Shows a lightweight startup page immediately, then starts embedded
+//      Postgres and the Python backend on a worker thread.
+//   4. Polls /readyz until the backend is fully ready (the FastAPI
 //      lifespan runs migrations + opens LangGraph's Postgres checkpointer
 //      pool — cold-start can be a few seconds on the first install).
-//   4. Navigates the main WebView to http://127.0.0.1:<port>/ — the
+//   5. Navigates the main WebView to http://127.0.0.1:<port>/ — the
 //      backend serves the React SPA from /opt/notesci/frontend via the
 //      NOTESCI_STATIC_DIR fallback that main.py wires up.
-//   5. Reveals the window.
 //
 // On exit:
 //   6. CloseRequested -> kill_backend() sends SIGKILL to the child
@@ -167,132 +168,28 @@ pub fn run() {
             info!("loaded {} env vars from config", env_overrides.len());
             let startup_timeout = backend_startup_timeout(&env_overrides);
 
-            let pg_mode = pg::detect(&resource_dir, &user_data_dir);
-            info!("pg mode: {:?}", pg_mode);
-            let mut startup_error: Option<String> = None;
-            match pg::ensure_started(&pg_mode) {
-                Ok(Some(db_url)) => {
-                    env_overrides.insert("DATABASE_URL".to_string(), db_url);
-                }
-                Ok(None) => {}
-                Err(err) => {
-                    match pg_mode {
-                        pg::Mode::Embedded { .. } => {
-                            startup_error = Some(format!("embedded postgres failed: {err}"));
-                        }
-                        _ => {
-                            warn!("embedded pg did not start: {err}");
-                        }
-                    }
-                }
-            }
-            // Stash for kill_backend on quit. State was registered with
-            // Mode::System; replace with the detected mode.
-            {
-                let st: tauri::State<PgMode> = app.state();
-                *st.0.lock().unwrap() = pg_mode;
-            }
-
-            // Backend lifecycle. We hide-to-tray on window close, so a
-            // previous launch may have left the backend running (the
-            // user can also forcibly kill the Tauri parent without it
-            // taking the backend child with it). Probe the port first
-            // and only spawn when nothing is listening — otherwise
-            // reuse the existing process and just navigate.
-            let already_up = std::net::TcpStream::connect_timeout(
-                &format!("{}:{}", BACKEND_HOST, BACKEND_PORT)
-                    .parse()
-                    .expect("hard-coded addr parses"),
-                Duration::from_millis(150),
-            )
-            .is_ok();
-            if startup_error.is_none() {
-                if !already_up {
-                    match spawn_backend(&layout, &env_overrides) {
-                        Ok(mut child) => {
-                            info!(
-                                "backend spawned, waiting for {}:{}",
-                                BACKEND_HOST, BACKEND_PORT
-                            );
-                            if let Err(err) = wait_for_backend_child(
-                                BACKEND_HOST,
-                                BACKEND_PORT,
-                                startup_timeout,
-                                &mut child,
-                            ) {
-                                warn!("backend readiness check failed: {err}");
-                                let status = child.try_wait().ok().flatten();
-                                let tail = read_log_tail(
-                                    &layout.backend_log,
-                                    STARTUP_LOG_TAIL_BYTES,
-                                )
-                                .unwrap_or_else(|_| "(backend log unavailable)".to_string());
-                                let reason = match status {
-                                    Some(exit_status) => {
-                                        format!(
-                                            "backend exited before ready: {exit_status}\n\nbackend startup log:\n{tail}"
-                                        )
-                                    }
-                                    None => {
-                                        format!("{err}\n\nbackend startup log:\n{tail}")
-                                    }
-                                };
-                                let _ = child.kill();
-                                let _ = child.wait();
-                                startup_error = Some(reason);
-                            } else {
-                                let state: tauri::State<BackendChild> = app.state();
-                                *state.0.lock().unwrap() = Some(child);
-                                info!("backend ready");
-                            }
-                        }
-                        Err(err) => {
-                            startup_error = Some(format!("failed to spawn backend: {err}"));
-                        }
-                    }
-                } else {
-                    // Existing process is already listening; still wait for app
-                    // readiness so we only expose the UI once startup is complete.
-                    if let Err(err) = wait_for_backend(
-                        BACKEND_HOST,
-                        BACKEND_PORT,
-                        startup_timeout,
-                    ) {
-                        warn!("backend readiness check failed: {err}");
-                        startup_error = Some(err);
-                    } else {
-                        info!("backend already running at {}:{} and ready", BACKEND_HOST, BACKEND_PORT);
-                    }
-                }
-            }
-
-            if startup_error.is_none() {
-                // Point the WebView at the backend's URL and show it.
-                // The backend in local mode rewrites index.html to seed
-                // localStorage with the bootstrap session token (see
-                // _spa_fallback in backend/main.py), so the SPA sees a
-                // logged-in state on first paint — no need to do the
-                // injection from this side.
-                if let Some(win) = app.get_webview_window("main") {
-                    let url = format!("http://{}:{}/", BACKEND_HOST, BACKEND_PORT);
-                    let parsed = url
-                        .parse()
-                        .map_err(|e| format!("bad backend url {url}: {e}"))?;
-                    win.navigate(parsed)
-                        .map_err(|e| format!("navigate failed: {e}"))?;
-                }
-            } else {
-                let reason = startup_error.clone().unwrap_or_else(|| "backend did not start".to_string());
-                if let Some(win) = app.get_webview_window("main") {
-                    if let Err(err) = show_startup_error_page(&win, &reason) {
-                        warn!("{err}");
-                    }
-                }
-            }
-
             if let Some(win) = app.get_webview_window("main") {
+                if let Err(err) = show_startup_loading_page(&win) {
+                    warn!("{err}");
+                }
                 win.show().map_err(|e| format!("show failed: {e}"))?;
             }
+
+            let startup_app = app.handle().clone();
+            thread::spawn(move || {
+                let result = start_backend_blocking(
+                    startup_app.clone(),
+                    resource_dir,
+                    user_data_dir,
+                    layout,
+                    env_overrides,
+                    startup_timeout,
+                );
+                match result {
+                    Ok(()) => navigate_main_to_backend_on_main(startup_app),
+                    Err(reason) => show_startup_error_on_main(startup_app, reason),
+                }
+            });
 
             // System-tray indicator. GNOME shows this in the top bar
             // (via AppIndicator), KDE / XFCE / Windows in the
@@ -500,6 +397,83 @@ fn backend_startup_timeout(env: &HashMap<String, String>) -> Duration {
         .unwrap_or(STARTUP_TIMEOUT_DEFAULT)
 }
 
+fn start_backend_blocking(
+    app: tauri::AppHandle,
+    resource_dir: std::path::PathBuf,
+    user_data_dir: std::path::PathBuf,
+    layout: Layout,
+    mut env_overrides: HashMap<String, String>,
+    startup_timeout: Duration,
+) -> Result<(), String> {
+    let pg_mode = pg::detect(&resource_dir, &user_data_dir);
+    info!("pg mode: {:?}", pg_mode);
+    {
+        let st: tauri::State<PgMode> = app.state();
+        *st.0.lock().unwrap() = pg_mode.clone();
+    }
+    match pg::ensure_started(&pg_mode) {
+        Ok(Some(db_url)) => {
+            env_overrides.insert("DATABASE_URL".to_string(), db_url);
+        }
+        Ok(None) => {}
+        Err(err) => match pg_mode {
+            pg::Mode::Embedded { .. } => {
+                return Err(format!("embedded postgres failed: {err}"));
+            }
+            _ => {
+                warn!("embedded pg did not start: {err}");
+            }
+        },
+    }
+
+    // Backend lifecycle. We hide-to-tray on non-Windows window close, so a
+    // previous launch may have left the backend running. Probe the port first
+    // and only spawn when nothing is listening; otherwise reuse the process and
+    // wait for application readiness before navigating the UI.
+    let already_up = std::net::TcpStream::connect_timeout(
+        &format!("{}:{}", BACKEND_HOST, BACKEND_PORT)
+            .parse()
+            .expect("hard-coded addr parses"),
+        Duration::from_millis(150),
+    )
+    .is_ok();
+    if already_up {
+        wait_for_backend(BACKEND_HOST, BACKEND_PORT, startup_timeout)?;
+        info!("backend already running at {}:{} and ready", BACKEND_HOST, BACKEND_PORT);
+        return Ok(());
+    }
+
+    let child = spawn_backend(&layout, &env_overrides)
+        .map_err(|err| format!("failed to spawn backend: {err}"))?;
+    {
+        let state: tauri::State<BackendChild> = app.state();
+        *state.0.lock().unwrap() = Some(child);
+    }
+    info!(
+        "backend spawned, waiting for {}:{}",
+        BACKEND_HOST, BACKEND_PORT
+    );
+
+    if let Err(err) = wait_for_backend_child(&app, BACKEND_HOST, BACKEND_PORT, startup_timeout) {
+        warn!("backend readiness check failed: {err}");
+        let tail = read_log_tail(&layout.backend_log, STARTUP_LOG_TAIL_BYTES)
+            .unwrap_or_else(|_| "(backend log unavailable)".to_string());
+        if let Some(mut child) = take_backend_child(&app) {
+            let _ = child.kill();
+            let _ = child.wait();
+        }
+        return Err(format!("{err}\n\nbackend startup log:\n{tail}"));
+    }
+
+    info!("backend ready");
+    Ok(())
+}
+
+fn take_backend_child(app: &tauri::AppHandle) -> Option<Child> {
+    let state: tauri::State<BackendChild> = app.state();
+    state.0.lock().unwrap().take()
+}
+
 fn spawn_backend(layout: &Layout, env: &HashMap<String, String>) -> std::io::Result<Child> {
     // Belt-and-suspenders: the bundle re-tar (deb/rpm) and AppImage squashfs
     // don't reliably preserve the +x bit on the staged interpreter, and a
@@ -569,19 +543,26 @@ fn wait_for_backend(host: &str, port: u16, timeout: Duration) -> Result<(), Stri
 }
 
 fn wait_for_backend_child(
+    app: &tauri::AppHandle,
     host: &str,
     port: u16,
     timeout: Duration,
-    child: &mut Child,
 ) -> Result<(), String> {
     let addr = format!("{host}:{port}");
     let start = Instant::now();
     let mut last_error: Option<String> = None;
     while start.elapsed() < timeout {
-        if let Some(status) = child
-            .try_wait()
-            .map_err(|e| format!("backend status check failed: {e}"))?
-        {
+        let status = {
+            let state: tauri::State<BackendChild> = app.state();
+            let mut guard = state.0.lock().unwrap();
+            let Some(child) = guard.as_mut() else {
+                return Err("backend process handle disappeared before ready".to_string());
+            };
+            child
+                .try_wait()
+                .map_err(|e| format!("backend status check failed: {e}"))?
+        };
+        if let Some(status) = status {
             return Err(format!("backend process exited before ready: {status}"));
         }
         if let Err(err) = wait_for_readyz(&addr) {
@@ -660,6 +641,76 @@ fn read_log_tail(path: &Path, max_bytes: usize) -> std::io::Result<String> {
     let mut buf = Vec::new();
     file.read_to_end(&mut buf)?;
     Ok(String::from_utf8_lossy(&buf).into_owned())
+}
+
+fn navigate_main_to_backend_on_main(app: tauri::AppHandle) {
+    let app_for_main = app.clone();
+    if let Err(err) = app.run_on_main_thread(move || {
+        if let Err(err) = navigate_main_to_backend_now(&app_for_main) {
+            warn!("{err}");
+            if let Some(win) = app_for_main.get_webview_window("main") {
+                let _ = show_startup_error_page(&win, &err);
+            }
+        }
+    }) {
+        warn!("dispatch backend navigation failed: {err}");
+    }
+}
+
+fn navigate_main_to_backend_now(app: &tauri::AppHandle) -> Result<(), String> {
+    let Some(win) = app.get_webview_window("main") else {
+        return Ok(());
+    };
+    let url = format!("http://{}:{}/", BACKEND_HOST, BACKEND_PORT);
+    let parsed = url
+        .parse()
+        .map_err(|e| format!("bad backend url {url}: {e}"))?;
+    win.navigate(parsed)
+        .map_err(|e| format!("navigate failed: {e}"))?;
+    win.show().map_err(|e| format!("show failed: {e}"))?;
+    Ok(())
+}
+
+fn show_startup_error_on_main(app: tauri::AppHandle, reason: String) {
+    let app_for_main = app.clone();
+    if let Err(err) = app.run_on_main_thread(move || {
+        if let Some(win) = app_for_main.get_webview_window("main") {
+            if let Err(err) = show_startup_error_page(&win, &reason) {
+                warn!("{err}");
+            }
+            let _ = win.show();
+        }
+    }) {
+        warn!("dispatch startup error page failed: {err}");
+    }
+}
+
+fn show_startup_loading_page(win: &tauri::WebviewWindow) -> Result<(), String> {
+    win.navigate("about:blank".parse().map_err(|e| format!("invalid about:blank url: {e}"))?)
+        .map_err(|e| format!("failed to navigate to startup loading page: {e}"))?;
+    let loading_page = "<!doctype html><html><head><meta charset=\"utf-8\"/>\
+<title>Starting notesci</title><style>\
+:root{color-scheme:light;}*{box-sizing:border-box;}body{margin:0;min-height:100vh;\
+display:grid;place-items:center;background:radial-gradient(circle at 20% 20%,#eef7ef 0,#eef7ef 22%,transparent 48%),\
+linear-gradient(135deg,#f7f1df 0%,#edf3e8 48%,#e7eff5 100%);font-family:Georgia,'Times New Roman',serif;color:#1f2a24;}\
+.card{width:min(520px,calc(100vw - 40px));padding:34px 36px;border:1px solid rgba(54,68,55,.16);\
+border-radius:24px;background:rgba(255,255,255,.72);box-shadow:0 24px 80px rgba(37,52,42,.16);backdrop-filter:blur(18px);}\
+.mark{width:42px;height:42px;border-radius:15px;background:#263b2d;margin-bottom:20px;position:relative;}\
+.mark:after{content:'';position:absolute;inset:10px;border:2px solid #f7e5a2;border-left-color:transparent;border-radius:999px;animation:spin 1s linear infinite;}\
+h1{margin:0 0 10px;font-size:28px;letter-spacing:-.02em;}p{margin:0;color:#536159;font:15px/1.6 system-ui,-apple-system,sans-serif;}\
+.bar{height:6px;margin-top:24px;overflow:hidden;border-radius:999px;background:rgba(38,59,45,.12);}\
+.bar:before{content:'';display:block;width:42%;height:100%;border-radius:inherit;background:#263b2d;animation:load 1.35s ease-in-out infinite;}\
+@keyframes spin{to{transform:rotate(360deg);}}@keyframes load{0%{transform:translateX(-110%);}100%{transform:translateX(250%);}}\
+</style></head><body><main class=\"card\"><div class=\"mark\"></div><h1>Starting notesci</h1>\
+<p>Preparing the local research workspace. First launch may initialize the bundled database; the app will open automatically when ready.</p>\
+<div class=\"bar\"></div></main></body></html>";
+    let script = format!(
+        "document.open();document.write({});document.close();",
+        serde_json::to_string(loading_page).map_err(|e| format!("json encode failed: {e}"))?
+    );
+    win.eval(&script)
+        .map_err(|e| format!("failed to render startup loading page: {e}"))?;
+    Ok(())
 }
 
 fn show_startup_error_page(win: &tauri::WebviewWindow, reason: &str) -> Result<(), String> {

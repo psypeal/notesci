@@ -367,6 +367,10 @@ jobs:
             if ($LASTEXITCODE -ne 0) {
               throw "installed bundled Python backend launcher failed with exit code $LASTEXITCODE"
             }
+            & (Join-Path $installDir "python/python.exe") -m notesci.serve --check-event-loop | Out-Null
+            if ($LASTEXITCODE -ne 0) {
+              throw "installed bundled Python backend event loop check failed with exit code $LASTEXITCODE"
+            }
           }
 
           function Get-NotesciRuntimeProcesses {

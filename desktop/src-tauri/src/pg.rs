@@ -46,7 +46,7 @@ const POLL_INTERVAL: Duration = Duration::from_millis(150);
 #[cfg(windows)]
 const CREATE_NO_WINDOW: u32 = 0x08000000;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum Mode {
     /// PG binaries bundled in the resource dir. We own initdb / start
     /// / stop and hand the backend the URL via env.

@@ -115,5 +115,6 @@ log "smoke test: uvicorn + notesci import from the bundled tree"
 "$PY" -m uvicorn --version
 PYTHONPATH="$BUNDLE_OUT/src" "$PY" -c "import notesci.main; print('notesci.main import OK')"
 PYTHONPATH="$BUNDLE_OUT/src" "$PY" -m notesci.serve --help >/dev/null
+PYTHONPATH="$BUNDLE_OUT/src" "$PY" -m notesci.serve --check-event-loop >/dev/null
 
 log "✅ backend bundled: interpreter+deps in $PY_ROOT, source in $BUNDLE_OUT"
