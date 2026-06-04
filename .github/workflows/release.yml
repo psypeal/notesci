@@ -507,6 +507,26 @@ jobs:
               -Headers $authHeaders `
               -TimeoutSec 10 | Out-Null
             Invoke-RestMethod `
+              -Uri "http://127.0.0.1:18765/api/me/provider-keys/openai" `
+              -Method Put `
+              -Headers $authHeaders `
+              -ContentType "application/json" `
+              -Body (@{ api_key = "sk-smoke-test-0000" } | ConvertTo-Json -Compress) `
+              -TimeoutSec 10 | Out-Null
+            $keyStatus = Invoke-RestMethod `
+              -Uri "http://127.0.0.1:18765/api/me/provider-keys" `
+              -Headers $authHeaders `
+              -TimeoutSec 10
+            $openaiKey = @($keyStatus.keys | Where-Object { $_.provider_id -eq "openai" })[0]
+            if (-not $openaiKey -or -not $openaiKey.set -or $openaiKey.last4 -ne "0000") {
+              throw "provider key smoke failed to save and reflect OpenAI key status"
+            }
+            Invoke-RestMethod `
+              -Uri "http://127.0.0.1:18765/api/me/provider-keys/openai" `
+              -Method Delete `
+              -Headers $authHeaders `
+              -TimeoutSec 10 | Out-Null
+            Invoke-RestMethod `
               -Uri "http://127.0.0.1:18765/api/providers/available" `
               -Headers $authHeaders `
               -TimeoutSec 10 | Out-Null
