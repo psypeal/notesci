@@ -161,7 +161,7 @@ pub fn run() {
             // Load env (/etc/notesci/notesci.conf on the .deb, backend/.env
             // in dev, a per-user conf for Bundled) so the child inherits DB
             // password + API keys.
-            let mut env_overrides = load_env_file(&layout.env_file).unwrap_or_else(|e| {
+            let env_overrides = load_env_file(&layout.env_file).unwrap_or_else(|e| {
                 warn!("could not load {}: {}", layout.env_file.display(), e);
                 HashMap::new()
             });
@@ -471,7 +471,8 @@ fn start_backend_blocking(
 
 fn take_backend_child(app: &tauri::AppHandle) -> Option<Child> {
     let state: tauri::State<BackendChild> = app.state();
-    state.0.lock().unwrap().take()
+    let child = state.0.lock().unwrap().take();
+    child
 }
 
 fn spawn_backend(layout: &Layout, env: &HashMap<String, String>) -> std::io::Result<Child> {
