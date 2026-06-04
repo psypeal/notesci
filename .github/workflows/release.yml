@@ -402,19 +402,26 @@ jobs:
 
           $pythonLock = Start-Process `
             -FilePath (Join-Path $installDir "python/python.exe") `
-            -ArgumentList @("-c", "import time; time.sleep(300)") `
+            -ArgumentList '-c "import time; time.sleep(300)"' `
             -PassThru
           Start-Sleep -Seconds 2
+          $pythonLock.Refresh()
 
           $runtimeProcesses = @(Get-NotesciRuntimeProcesses)
           if (-not ($runtimeProcesses | Where-Object { $_.ExecutablePath -like "*\pg\bin\postgres.exe" })) {
             throw "upgrade smoke did not start installed postgres.exe"
           }
-          if (-not ($runtimeProcesses | Where-Object { $_.ProcessId -eq $pythonLock.Id })) {
-            throw "upgrade smoke did not start installed python.exe lock process"
+          if ($pythonLock.HasExited) {
+            throw "upgrade smoke python.exe lock process exited early with code $($pythonLock.ExitCode)"
           }
 
           Install-Notesci "upgrade while runtime files are locked"
+
+          $pythonLock.Refresh()
+          if (-not $pythonLock.HasExited) {
+            Stop-Process -Id $pythonLock.Id -Force -ErrorAction SilentlyContinue
+            throw "installer did not stop the installed python.exe lock process before upgrade"
+          }
 
           $leftovers = @(Get-NotesciRuntimeProcesses)
           if ($leftovers.Count -gt 0) {
