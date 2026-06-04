@@ -411,8 +411,8 @@ async def _bootstrap_local_session() -> None:
                 # ever sends mail to it.
                 cur = await conn.execute(
                     "INSERT INTO members "
-                    "  (workspace_id, email, display_name, role, email_verified) "
-                    "VALUES (%s, %s, %s, %s, TRUE) RETURNING id",
+                    "  (workspace_id, email, display_name, role, email_verified_at) "
+                    "VALUES (%s, %s, %s, %s, now()) RETURNING id",
                     (ws_id, "local@notesci.app", "You", "admin"),
                 )
                 member_id = (await cur.fetchone())[0]
