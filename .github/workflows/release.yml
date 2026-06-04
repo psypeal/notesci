@@ -27,7 +27,7 @@ on:
         default: ''
 
 env:
-  PG_VERSION: "16.4"
+  PG_VERSION: "16.14"
   PGVECTOR_VERSION: "0.8.0"
   PNPM_VERSION: "9"
   NODE_VERSION: "20"

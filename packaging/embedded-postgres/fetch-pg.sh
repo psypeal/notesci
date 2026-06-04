@@ -15,7 +15,7 @@
 
 set -euo pipefail
 
-PG_VERSION="16.4"
+PG_VERSION="${PG_VERSION:-16.14}"
 EDB_BASE="https://get.enterprisedb.com/postgresql"
 
 OS="${1:-}"
@@ -55,6 +55,19 @@ download_archive() {
     return 1
 }
 
+download_first_archive() {
+    local out="$1"
+    shift
+    local url
+    for url in "$@"; do
+        log "downloading $url"
+        if download_archive "$url" "$out"; then
+            return 0
+        fi
+    done
+    return 1
+}
+
 if [[ "$OS" == "windows" && -d "$DEST/bin" && -f "$DEST/bin/postgres.exe" ]]; then
     log "$OS PG tree already at $DEST — skipping"
     exit 0
@@ -71,9 +84,11 @@ case "$OS" in
     macos)
         # EnterpriseDB ships universal2 binaries (x86_64 + arm64).
         ARCHIVE="postgresql-${PG_VERSION}-1-osx-binaries.zip"
-        URL="$EDB_BASE/$ARCHIVE"
-        log "downloading $URL"
-        download_archive "$URL" "$BUILD/$ARCHIVE"
+        URLS=("$EDB_BASE/$ARCHIVE")
+        if [[ "$PG_VERSION" == "16.14" ]]; then
+            URLS+=("https://sbp.enterprisedb.com/getfile.jsp?fileid=1260222")
+        fi
+        download_first_archive "$BUILD/$ARCHIVE" "${URLS[@]}"
         log "extracting"
         ( cd "$BUILD" && unzip -q -o "$ARCHIVE" )
         # The zip lays out as `pgsql/{bin,lib,...}` — flatten into $DEST.
@@ -84,9 +99,11 @@ case "$OS" in
     windows)
         # EnterpriseDB Windows binaries archive.
         ARCHIVE="postgresql-${PG_VERSION}-1-windows-x64-binaries.zip"
-        URL="$EDB_BASE/$ARCHIVE?download=1"
-        log "downloading $URL"
-        download_archive "$URL" "$BUILD/$ARCHIVE"
+        URLS=("$EDB_BASE/$ARCHIVE")
+        if [[ "$PG_VERSION" == "16.14" ]]; then
+            URLS+=("https://sbp.enterprisedb.com/getfile.jsp?fileid=1260202")
+        fi
+        download_first_archive "$BUILD/$ARCHIVE" "${URLS[@]}"
         log "extracting"
         ( cd "$BUILD" && unzip -q -o "$ARCHIVE" )
         mv "$BUILD/pgsql"/* "$DEST/"
