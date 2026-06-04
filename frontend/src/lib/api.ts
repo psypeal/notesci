@@ -20,6 +20,32 @@ export function setToken(token: string | null) {
   else localStorage.removeItem(TOKEN_KEY)
 }
 
+interface LocalTokenResponse {
+  token?: string
+}
+
+let localTokenRequest: Promise<string | null> | null = null
+
+async function recoverLocalToken(): Promise<string | null> {
+  if (localTokenRequest) return localTokenRequest
+  localTokenRequest = (async () => {
+    try {
+      const r = await fetch('/api/auth/local-token', { cache: 'no-store' })
+      if (!r.ok) return null
+      const body = (await r.json()) as LocalTokenResponse
+      const token = typeof body.token === 'string' ? body.token.trim() : ''
+      if (!token) return null
+      setToken(token)
+      return token
+    } catch {
+      return null
+    } finally {
+      localTokenRequest = null
+    }
+  })()
+  return localTokenRequest
+}
+
 /** localStorage keys that survive sign-out — they're per-browser UI
  *  preferences, not user data, so resetting them on every sign-out
  *  would feel like the workspace forgot the user's last layout each
@@ -150,13 +176,14 @@ export interface ApiError extends Error {
  */
 export async function apiBlob(
   path: string,
-  init: RequestInit & { auth?: boolean; signal?: AbortSignal } = {},
+  init: RequestInit & { auth?: boolean; localAuthRetry?: boolean; signal?: AbortSignal } = {},
 ): Promise<Blob> {
   const headers: Record<string, string> = {
     ...((init.headers as Record<string, string>) ?? {}),
   }
   if (init.auth) {
-    const t = getToken()
+    let t = getToken()
+    if (!t && !init.localAuthRetry) t = await recoverLocalToken()
     if (t) headers.authorization = `Bearer ${t}`
   }
   let r: Response
@@ -170,6 +197,11 @@ export async function apiBlob(
     throw err
   }
   if (!r.ok) {
+    if (r.status === 401 && init.auth && !init.localAuthRetry) {
+      setToken(null)
+      const recovered = await recoverLocalToken()
+      if (recovered) return apiBlob(path, { ...init, localAuthRetry: true })
+    }
     if (r.status === 401 && init.auth) {
       setToken(null)
       window.dispatchEvent(new Event('notesci-auth-expired'))
@@ -183,14 +215,15 @@ export async function apiBlob(
 
 export async function api<T = unknown>(
   path: string,
-  init: RequestInit & { auth?: boolean } = {}
+  init: RequestInit & { auth?: boolean; localAuthRetry?: boolean } = {}
 ): Promise<T> {
   const headers: Record<string, string> = {
     'content-type': 'application/json',
     ...((init.headers as Record<string, string>) ?? {}),
   }
   if (init.auth) {
-    const t = getToken()
+    let t = getToken()
+    if (!t && !init.localAuthRetry) t = await recoverLocalToken()
     if (t) headers.authorization = `Bearer ${t}`
   }
   let r: Response
@@ -221,6 +254,11 @@ export async function api<T = unknown>(
     // 401, clear the token and broadcast so the router can redirect
     // anyone watching to /sign-in. Page-level handlers can still catch
     // the error to render their own messaging.
+    if (r.status === 401 && init.auth && !init.localAuthRetry) {
+      setToken(null)
+      const recovered = await recoverLocalToken()
+      if (recovered) return api<T>(path, { ...init, localAuthRetry: true })
+    }
     if (r.status === 401 && init.auth) {
       setToken(null)
       window.dispatchEvent(new Event('notesci-auth-expired'))
@@ -233,7 +271,7 @@ export async function api<T = unknown>(
 
 export async function apiSse(
   path: string,
-  init: RequestInit & { auth?: boolean },
+  init: RequestInit & { auth?: boolean; localAuthRetry?: boolean },
   onEvent: (event: Record<string, unknown>) => void,
 ): Promise<void> {
   const headers: Record<string, string> = {
@@ -241,7 +279,8 @@ export async function apiSse(
     ...((init.headers as Record<string, string>) ?? {}),
   }
   if (init.auth) {
-    const t = getToken()
+    let t = getToken()
+    if (!t && !init.localAuthRetry) t = await recoverLocalToken()
     if (t) headers.authorization = `Bearer ${t}`
   }
   let r: Response
@@ -262,9 +301,20 @@ export async function apiSse(
     err.cause = cause
     throw err
   }
+  if (r.status === 401 && init.auth && !init.localAuthRetry) {
+    setToken(null)
+    const recovered = await recoverLocalToken()
+    if (recovered) {
+      return apiSse(path, { ...init, localAuthRetry: true }, onEvent)
+    }
+  }
   if (!r.ok || !r.body) {
     const err = new Error(`request failed (${r.status})`) as ApiError
     err.status = r.status
+    if (r.status === 401 && init.auth) {
+      setToken(null)
+      window.dispatchEvent(new Event('notesci-auth-expired'))
+    }
     throw err
   }
 
@@ -312,11 +362,12 @@ export async function apiSse(
 export async function apiForm<T = unknown>(
   path: string,
   body: FormData,
-  init: { auth?: boolean; signal?: AbortSignal; method?: string } = {},
+  init: { auth?: boolean; localAuthRetry?: boolean; signal?: AbortSignal; method?: string } = {},
 ): Promise<T> {
   const headers: Record<string, string> = {}
   if (init.auth) {
-    const t = getToken()
+    let t = getToken()
+    if (!t && !init.localAuthRetry) t = await recoverLocalToken()
     if (t) headers.authorization = `Bearer ${t}`
   }
   let r: Response
@@ -345,6 +396,13 @@ export async function apiForm<T = unknown>(
     const err = new Error(detail?.message || `request failed (${r.status})`) as ApiError
     err.status = r.status
     err.code = detail?.code
+    if (r.status === 401 && init.auth && !init.localAuthRetry) {
+      setToken(null)
+      const recovered = await recoverLocalToken()
+      if (recovered) {
+        return apiForm<T>(path, body, { ...init, localAuthRetry: true })
+      }
+    }
     if (r.status === 401 && init.auth) {
       setToken(null)
       window.dispatchEvent(new Event('notesci-auth-expired'))

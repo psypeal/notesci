@@ -11,6 +11,8 @@
   },
   "permissions": [
     "core:default",
+    "core:window:deny-start-dragging",
+    "core:window:deny-start-resize-dragging",
     "core:window:allow-show",
     "core:window:allow-set-title",
     "core:webview:default",

@@ -448,6 +448,16 @@ async def _bootstrap_local_session() -> None:
             logger.info("local-mode bootstrap: wrote session token to %s", token_path)
 
 
+def _read_local_mode_token() -> str | None:
+    """Return the current desktop local-mode session token, if available."""
+    if not settings.notesci_local_mode:
+        return None
+    try:
+        return _Path(settings.notesci_local_token_path).read_text().strip() or None
+    except OSError:
+        return None
+
+
 def _on_task_done(task: asyncio.Task, label: str) -> None:
     try:
         app.state.background_tasks.discard(task)
@@ -533,6 +543,26 @@ class _StripApiPrefixMiddleware(BaseHTTPMiddleware):
 
 
 app.add_middleware(_StripApiPrefixMiddleware)
+
+
+@app.get("/auth/local-token")
+async def local_auth_token():
+    """Local desktop auth recovery endpoint.
+
+    The Tauri shell normally receives the bootstrap token through the
+    served ``index.html``. If localStorage is stale or cleared while the
+    SPA stays mounted, authenticated calls would otherwise loop on 401
+    until a hard reload. In local desktop mode, re-run the idempotent
+    bootstrap and return the current token so the frontend can retry
+    once. Non-local deployments do not expose this endpoint.
+    """
+    if not settings.notesci_local_mode:
+        raise HTTPException(status_code=404, detail="not found")
+    await _bootstrap_local_session()
+    token = _read_local_mode_token()
+    if not token:
+        raise HTTPException(status_code=503, detail="local token unavailable")
+    return {"token": token}
 
 
 class ChatIn(BaseModel):

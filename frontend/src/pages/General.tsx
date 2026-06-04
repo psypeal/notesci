@@ -21,7 +21,7 @@
  * up in a later slice once the project-chat redesign lands and we can
  * share a single composer component across both surfaces.
  */
-import { useCallback, useEffect, useId, useRef, useState } from 'react'
+import { type FormEvent, useCallback, useEffect, useId, useRef, useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router'
 import { Lockup } from '../components/brand/Lockup'
 import { Icons } from '../components/icons'
@@ -120,6 +120,7 @@ export function GeneralPage() {
   const [me, setMe] = useState<MeOut | null>(null)
   const [projects, setProjects] = useState<ProjectOut[]>([])
   const [projectMenuOpen, setProjectMenuOpen] = useState(false)
+  const [newProjectOpen, setNewProjectOpen] = useState(false)
   const [avatarMenuOpen, setAvatarMenuOpen] = useState(false)
 
   // sessionId comes from ?s=<uuid> on first paint so refresh restores the
@@ -193,6 +194,28 @@ export function GeneralPage() {
       return !result.open
     })
   }
+
+  const createProjectFromGeneral = useCallback(
+    async (name: string) => {
+      try {
+        const project = await api<ProjectOut>('/projects', {
+          method: 'POST',
+          auth: true,
+          body: JSON.stringify({ name }),
+        })
+        setProjects((prev) => [
+          project,
+          ...prev.filter((p) => p.id !== project.id),
+        ])
+        setNewProjectOpen(false)
+        navigate(`/p/${project.id}`)
+      } catch (e) {
+        toast.error(errorMessage(e, "Couldn't create the project."))
+        throw e
+      }
+    },
+    [navigate, toast],
+  )
 
   // Load identity, projects, general sessions list. Identity is loaded
   // once on mount; sessions get refreshed after every send so the
@@ -594,6 +617,16 @@ export function GeneralPage() {
 
           <button
             type="button"
+            className="ns-btn"
+            onClick={() => setNewProjectOpen(true)}
+            aria-label="Create a new project"
+            style={{ gap: 7 }}
+          >
+            <span aria-hidden="true" style={{ fontSize: 17, lineHeight: 1 }}>+</span>
+            New project
+          </button>
+          <button
+            type="button"
             onClick={() => {
               setProjectMenuOpen((v) => !v)
               setAvatarMenuOpen(false)
@@ -719,6 +752,12 @@ export function GeneralPage() {
         </div>
       </div>
       {confirmDialog}
+      {newProjectOpen && (
+        <CreateProjectModal
+          onClose={() => setNewProjectOpen(false)}
+          onCreate={createProjectFromGeneral}
+        />
+      )}
     </div>
   )
 }
@@ -1967,6 +2006,111 @@ function AvatarMenu({
       >
         Library
       </Link>
+    </div>
+  )
+}
+
+function CreateProjectModal({
+  onClose,
+  onCreate,
+}: {
+  onClose: () => void
+  onCreate: (name: string) => Promise<void>
+}) {
+  const titleId = useId()
+  const inputId = useId()
+  const [name, setName] = useState('')
+  const [saving, setSaving] = useState(false)
+  const trimmed = name.trim()
+
+  const submit = async (e: FormEvent<HTMLFormElement>) => {
+    e.preventDefault()
+    if (!trimmed || saving) return
+    setSaving(true)
+    try {
+      await onCreate(trimmed)
+    } catch {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div
+      role="presentation"
+      onMouseDown={onClose}
+      style={{
+        position: 'fixed',
+        inset: 0,
+        zIndex: 100,
+        background: 'rgba(14, 17, 22, 0.28)',
+        display: 'grid',
+        placeItems: 'center',
+        padding: 20,
+        backdropFilter: 'blur(8px)',
+      }}
+    >
+      <form
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
+        onSubmit={submit}
+        onMouseDown={(e) => e.stopPropagation()}
+        style={{
+          width: 'min(430px, 100%)',
+          border: '1px solid var(--color-rule)',
+          borderRadius: 18,
+          background: 'var(--color-paper)',
+          boxShadow: '0 30px 80px rgba(14, 17, 22, 0.24)',
+          padding: 22,
+        }}
+      >
+        <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12 }}>
+          <div style={{ flex: 1 }}>
+            <h2 id={titleId} style={{ margin: 0, fontSize: 20, letterSpacing: '-0.02em' }}>
+              New project
+            </h2>
+            <p style={{ margin: '6px 0 0', color: 'var(--color-muted)', fontSize: 13.5, lineHeight: 1.45 }}>
+              Create a workspace for papers, notes, citations, and project chat.
+            </p>
+          </div>
+          <button
+            type="button"
+            className="ns-btn"
+            onClick={onClose}
+            aria-label="Close new project dialog"
+            style={{ width: 32, height: 32, padding: 0 }}
+          >
+            ×
+          </button>
+        </div>
+
+        <label
+          htmlFor={inputId}
+          className="font-mono"
+          style={{ display: 'block', marginTop: 20, marginBottom: 7, fontSize: 11, color: 'var(--color-muted)' }}
+        >
+          Project name
+        </label>
+        <input
+          id={inputId}
+          className="ns-input"
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          autoFocus
+          placeholder="Brain aging literature review"
+          maxLength={120}
+          style={{ width: '100%' }}
+        />
+
+        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 22 }}>
+          <button type="button" className="ns-btn" onClick={onClose} disabled={saving}>
+            Cancel
+          </button>
+          <button type="submit" className="ns-btn primary" disabled={!trimmed || saving}>
+            {saving ? 'Creating…' : 'Create project'}
+          </button>
+        </div>
+      </form>
     </div>
   )
 }
