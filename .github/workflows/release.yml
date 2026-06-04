@@ -311,53 +311,117 @@ jobs:
             Remove-Item -LiteralPath $installDir -Recurse -Force -ErrorAction SilentlyContinue
           }
 
-          $proc = Start-Process -FilePath $installer.FullName -ArgumentList "/S" -Wait -PassThru
-          if ($proc.ExitCode -ne 0) {
-            throw "silent install failed with exit code $($proc.ExitCode)"
-          }
-
-          $required = @(
-            "notesci.exe",
-            "pg/bin/postgres.exe",
-            "pg/bin/initdb.exe",
-            "pg/bin/pg_ctl.exe",
-            "pg/bin/psql.exe",
-            "pg/bin/icudt67.dll",
-            "pg/bin/icuin67.dll",
-            "pg/bin/icuuc67.dll",
-            "pg/bin/libpq.dll",
-            "pg/bin/libssl-3-x64.dll",
-            "pg/bin/libcrypto-3-x64.dll",
-            "pg/bin/libxml2.dll",
-            "pg/bin/zlib1.dll",
-            "pg/lib/vector.dll",
-            "pg/share/extension/vector.control",
-            "python/python.exe",
-            "backend/src/notesci/main.py",
-            "frontend/index.html"
-          )
-          foreach ($rel in $required) {
-            $path = Join-Path $installDir $rel
-            if (-not (Test-Path -LiteralPath $path)) {
-              Get-ChildItem -LiteralPath $installDir | Select-Object Name, Length | Format-Table | Out-String | Write-Host
-              throw "Missing installed artifact: $path"
+          function Install-Notesci([string] $Label) {
+            Write-Host "Installing notesci ($Label) from $($installer.FullName)"
+            $proc = Start-Process -FilePath $installer.FullName -ArgumentList "/S" -Wait -PassThru
+            if ($proc.ExitCode -ne 0) {
+              throw "silent install failed during ${Label} with exit code $($proc.ExitCode)"
             }
           }
 
-          & (Join-Path $installDir "pg/bin/postgres.exe") -V
-          if ($LASTEXITCODE -ne 0) {
-            throw "installed postgres.exe -V failed with exit code $LASTEXITCODE"
-          }
-          & (Join-Path $installDir "pg/bin/initdb.exe") --version
-          if ($LASTEXITCODE -ne 0) {
-            throw "installed initdb.exe --version failed with exit code $LASTEXITCODE"
+          function Assert-InstalledBundle {
+            $required = @(
+              "notesci.exe",
+              "pg/bin/postgres.exe",
+              "pg/bin/initdb.exe",
+              "pg/bin/pg_ctl.exe",
+              "pg/bin/psql.exe",
+              "pg/bin/icudt67.dll",
+              "pg/bin/icuin67.dll",
+              "pg/bin/icuuc67.dll",
+              "pg/bin/libpq.dll",
+              "pg/bin/libssl-3-x64.dll",
+              "pg/bin/libcrypto-3-x64.dll",
+              "pg/bin/libxml2.dll",
+              "pg/bin/zlib1.dll",
+              "pg/lib/vector.dll",
+              "pg/share/extension/vector.control",
+              "python/python.exe",
+              "backend/src/notesci/main.py",
+              "frontend/index.html"
+            )
+            foreach ($rel in $required) {
+              $path = Join-Path $installDir $rel
+              if (-not (Test-Path -LiteralPath $path)) {
+                Get-ChildItem -LiteralPath $installDir | Select-Object Name, Length | Format-Table | Out-String | Write-Host
+                throw "Missing installed artifact: $path"
+              }
+            }
+
+            & (Join-Path $installDir "pg/bin/postgres.exe") -V
+            if ($LASTEXITCODE -ne 0) {
+              throw "installed postgres.exe -V failed with exit code $LASTEXITCODE"
+            }
+            & (Join-Path $installDir "pg/bin/initdb.exe") --version
+            if ($LASTEXITCODE -ne 0) {
+              throw "installed initdb.exe --version failed with exit code $LASTEXITCODE"
+            }
+
+            $env:PYTHONPATH = Join-Path $installDir "backend/src"
+            & (Join-Path $installDir "python/python.exe") -c "import uvicorn; import notesci.main; print('backend import OK')"
+            if ($LASTEXITCODE -ne 0) {
+              throw "installed bundled Python backend import failed with exit code $LASTEXITCODE"
+            }
           }
 
-          $env:PYTHONPATH = Join-Path $installDir "backend/src"
-          & (Join-Path $installDir "python/python.exe") -c "import uvicorn; import notesci.main; print('backend import OK')"
-          if ($LASTEXITCODE -ne 0) {
-            throw "installed bundled Python backend import failed with exit code $LASTEXITCODE"
+          function Get-NotesciRuntimeProcesses {
+            $root = [System.IO.Path]::GetFullPath($installDir).TrimEnd('\', '/')
+            Get-CimInstance Win32_Process | Where-Object {
+              $_.ExecutablePath -and [System.IO.Path]::GetFullPath($_.ExecutablePath).StartsWith($root, [System.StringComparison]::OrdinalIgnoreCase)
+            }
           }
+
+          Install-Notesci "clean install"
+          Assert-InstalledBundle
+
+          $pgData = Join-Path $env:TEMP "notesci-upgrade-pgdata"
+          $pgLog = Join-Path $env:TEMP "notesci-upgrade-pg.log"
+          Remove-Item -LiteralPath $pgData -Recurse -Force -ErrorAction SilentlyContinue
+          & (Join-Path $installDir "pg/bin/initdb.exe") `
+            -D $pgData `
+            --username notesci `
+            --encoding UTF8 `
+            --no-locale `
+            --auth-local=trust `
+            --auth-host=trust
+          if ($LASTEXITCODE -ne 0) {
+            throw "upgrade smoke initdb failed with exit code $LASTEXITCODE"
+          }
+
+          & (Join-Path $installDir "pg/bin/pg_ctl.exe") `
+            -D $pgData `
+            -l $pgLog `
+            -o "-p 55439 -h 127.0.0.1" `
+            -w start
+          if ($LASTEXITCODE -ne 0) {
+            if (Test-Path -LiteralPath $pgLog) {
+              Get-Content -LiteralPath $pgLog | Write-Host
+            }
+            throw "upgrade smoke pg_ctl start failed with exit code $LASTEXITCODE"
+          }
+
+          $pythonLock = Start-Process `
+            -FilePath (Join-Path $installDir "python/python.exe") `
+            -ArgumentList @("-c", "import time; time.sleep(300)") `
+            -PassThru
+          Start-Sleep -Seconds 2
+
+          $runtimeProcesses = @(Get-NotesciRuntimeProcesses)
+          if (-not ($runtimeProcesses | Where-Object { $_.ExecutablePath -like "*\pg\bin\postgres.exe" })) {
+            throw "upgrade smoke did not start installed postgres.exe"
+          }
+          if (-not ($runtimeProcesses | Where-Object { $_.ProcessId -eq $pythonLock.Id })) {
+            throw "upgrade smoke did not start installed python.exe lock process"
+          }
+
+          Install-Notesci "upgrade while runtime files are locked"
+
+          $leftovers = @(Get-NotesciRuntimeProcesses)
+          if ($leftovers.Count -gt 0) {
+            $leftovers | Select-Object ProcessId, ExecutablePath, CommandLine | Format-Table | Out-String | Write-Host
+            throw "installer did not stop all NoteSci runtime processes before upgrade"
+          }
+          Assert-InstalledBundle
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
