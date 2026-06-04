@@ -558,8 +558,10 @@ async def local_auth_token():
     """
     if not settings.notesci_local_mode:
         raise HTTPException(status_code=404, detail="not found")
-    await _bootstrap_local_session()
     token = _read_local_mode_token()
+    if not token:
+        await _bootstrap_local_session()
+        token = _read_local_mode_token()
     if not token:
         raise HTTPException(status_code=503, detail="local token unavailable")
     return {"token": token}

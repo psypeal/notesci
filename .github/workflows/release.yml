@@ -530,6 +530,14 @@ jobs:
               throw "project smoke did not create a project"
             }
             Write-Host "Installed backend local-mode authenticated API smoke passed"
+          } catch {
+            if (Test-Path -LiteralPath $backendOut) {
+              Get-Content -LiteralPath $backendOut | Write-Host
+            }
+            if (Test-Path -LiteralPath $backendErr) {
+              Get-Content -LiteralPath $backendErr | Write-Host
+            }
+            throw
           } finally {
             if ($backendProc -and -not $backendProc.HasExited) {
               Stop-Process -Id $backendProc.Id -Force -ErrorAction SilentlyContinue
