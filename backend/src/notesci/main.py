@@ -433,7 +433,7 @@ async def _bootstrap_local_session() -> None:
                 cur = await conn.execute(
                     "SELECT 1 FROM auth_sessions "
                     "WHERE token_hash = %s AND member_id = %s "
-                    "  AND expires_at > now() AND revoked_at IS NULL",
+                    "  AND expires_at > now()",
                     (hash_token(existing), member_id),
                 )
                 if await cur.fetchone() is not None:
