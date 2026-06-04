@@ -184,6 +184,18 @@ case "$OS" in
         ;;
 esac
 
+# EDB binary archives include GUI/admin extras that notesci never launches.
+# pgAdmin.app also contains broken framework symlinks in newer macOS archives,
+# which makes `cp -r` fail during Tauri resource staging. Keep only the server,
+# client helpers, libraries, and extension/share files we actually need.
+rm -rf \
+    "$DEST/pgAdmin 4.app" \
+    "$DEST/pgAdmin 4" \
+    "$DEST/StackBuilder.app" \
+    "$DEST/StackBuilder" \
+    "$DEST/doc" \
+    "$DEST/docs"
+
 # Sanity check.
 if [[ "$OS" == "windows" ]]; then
     if [[ ! -f "$DEST/bin/postgres.exe" ]]; then
