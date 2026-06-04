@@ -267,6 +267,14 @@ jobs:
             "bin/initdb.exe",
             "bin/pg_ctl.exe",
             "bin/psql.exe",
+            "bin/icudt67.dll",
+            "bin/icuin67.dll",
+            "bin/icuuc67.dll",
+            "bin/libpq.dll",
+            "bin/libssl-3-x64.dll",
+            "bin/libcrypto-3-x64.dll",
+            "bin/libxml2.dll",
+            "bin/zlib1.dll",
             "lib/vector.dll",
             "share/extension/vector.control"
           )
@@ -288,6 +296,68 @@ jobs:
           cd desktop\src-tauri
           cargo install --locked tauri-cli --version "^2"
           cargo tauri build --bundles nsis
+
+      - name: Smoke test Windows installer
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $installer = Get-ChildItem -LiteralPath "desktop/src-tauri/target/release/bundle/nsis" -Filter "*.exe" | Select-Object -First 1
+          if (-not $installer) {
+            throw "NSIS installer was not produced"
+          }
+
+          $installDir = Join-Path $env:LOCALAPPDATA "notesci"
+          if (Test-Path -LiteralPath $installDir) {
+            Remove-Item -LiteralPath $installDir -Recurse -Force -ErrorAction SilentlyContinue
+          }
+
+          $proc = Start-Process -FilePath $installer.FullName -ArgumentList "/S" -Wait -PassThru
+          if ($proc.ExitCode -ne 0) {
+            throw "silent install failed with exit code $($proc.ExitCode)"
+          }
+
+          $required = @(
+            "notesci.exe",
+            "pg/bin/postgres.exe",
+            "pg/bin/initdb.exe",
+            "pg/bin/pg_ctl.exe",
+            "pg/bin/psql.exe",
+            "pg/bin/icudt67.dll",
+            "pg/bin/icuin67.dll",
+            "pg/bin/icuuc67.dll",
+            "pg/bin/libpq.dll",
+            "pg/bin/libssl-3-x64.dll",
+            "pg/bin/libcrypto-3-x64.dll",
+            "pg/bin/libxml2.dll",
+            "pg/bin/zlib1.dll",
+            "pg/lib/vector.dll",
+            "pg/share/extension/vector.control",
+            "python/python.exe",
+            "backend/src/notesci/main.py",
+            "frontend/index.html"
+          )
+          foreach ($rel in $required) {
+            $path = Join-Path $installDir $rel
+            if (-not (Test-Path -LiteralPath $path)) {
+              Get-ChildItem -LiteralPath $installDir | Select-Object Name, Length | Format-Table | Out-String | Write-Host
+              throw "Missing installed artifact: $path"
+            }
+          }
+
+          & (Join-Path $installDir "pg/bin/postgres.exe") -V
+          if ($LASTEXITCODE -ne 0) {
+            throw "installed postgres.exe -V failed with exit code $LASTEXITCODE"
+          }
+          & (Join-Path $installDir "pg/bin/initdb.exe") --version
+          if ($LASTEXITCODE -ne 0) {
+            throw "installed initdb.exe --version failed with exit code $LASTEXITCODE"
+          }
+
+          $env:PYTHONPATH = Join-Path $installDir "backend/src"
+          & (Join-Path $installDir "python/python.exe") -c "import uvicorn; import notesci.main; print('backend import OK')"
+          if ($LASTEXITCODE -ne 0) {
+            throw "installed bundled Python backend import failed with exit code $LASTEXITCODE"
+          }
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4

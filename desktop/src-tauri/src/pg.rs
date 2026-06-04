@@ -165,16 +165,42 @@ fn windows_compat_path(path: &Path) -> PathBuf {
 
 fn verify_embedded_pg_tree(pg_root: &Path) -> Result<(), String> {
     let bin_dir = pg_root.join("bin");
-    let required: &[&str] = if cfg!(windows) {
-        &["postgres.exe", "initdb.exe", "pg_ctl.exe", "psql.exe"]
+    let required: Vec<PathBuf> = if cfg!(windows) {
+        [
+            "bin/postgres.exe",
+            "bin/initdb.exe",
+            "bin/pg_ctl.exe",
+            "bin/psql.exe",
+            "bin/icudt67.dll",
+            "bin/icuin67.dll",
+            "bin/icuuc67.dll",
+            "bin/libpq.dll",
+            "bin/libssl-3-x64.dll",
+            "bin/libcrypto-3-x64.dll",
+            "bin/libxml2.dll",
+            "bin/zlib1.dll",
+            "lib/vector.dll",
+            "share/extension/vector.control",
+        ]
+        .iter()
+        .map(|rel| pg_root.join(rel))
+        .collect()
     } else {
-        &["postgres", "initdb", "pg_ctl", "psql"]
+        ["bin/postgres", "bin/initdb", "bin/pg_ctl", "bin/psql"]
+            .iter()
+            .map(|rel| pg_root.join(rel))
+            .collect()
     };
 
-    let mut missing: Vec<String> = required
+    let missing: Vec<String> = required
         .iter()
-        .filter(|name| !bin_dir.join(name).exists())
-        .map(|name| (*name).to_string())
+        .filter(|path| !path.exists())
+        .map(|path| {
+            path.strip_prefix(pg_root)
+                .unwrap_or(path)
+                .display()
+                .to_string()
+        })
         .collect();
 
     if missing.is_empty() {
@@ -204,13 +230,24 @@ fn verify_embedded_pg_tree(pg_root: &Path) -> Result<(), String> {
 /// the dynamic-linker search path. The relocated tree's binaries were
 /// built with an rpath pointing at their original system prefix (e.g.
 /// /usr/lib/... for the Ubuntu-.deb-extracted Linux tree), so without
-/// this they fail to find their own bundled libpq / ICU / libxml. No-op
-/// on Windows (DLLs resolve from the binary's own dir / PATH).
+/// this they fail to find their own bundled libpq / ICU / libxml. On
+/// Windows we also prepend bundled bin/lib directories to PATH so helper
+/// processes launched by initdb/pg_ctl resolve ICU and libpq from the
+/// embedded tree instead of relying on global DLL search state.
 fn pg_command(pg_root: &Path, name: &str) -> Command {
     let mut cmd = Command::new(bin(pg_root, name));
     cmd.current_dir(pg_root.join("bin"));
     #[cfg(windows)]
-    cmd.creation_flags(CREATE_NO_WINDOW);
+    {
+        cmd.creation_flags(CREATE_NO_WINDOW);
+        let mut paths = vec![pg_root.join("bin"), pg_root.join("lib")];
+        if let Some(existing) = std::env::var_os("PATH") {
+            paths.extend(std::env::split_paths(&existing));
+        }
+        if let Ok(joined) = std::env::join_paths(paths) {
+            cmd.env("PATH", joined);
+        }
+    }
     #[cfg(not(windows))]
     {
         let key = if cfg!(target_os = "macos") {
