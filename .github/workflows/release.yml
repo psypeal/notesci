@@ -409,6 +409,74 @@ jobs:
             throw "upgrade smoke pg_ctl start failed with exit code $LASTEXITCODE"
           }
 
+          & (Join-Path $installDir "pg/bin/psql.exe") `
+            -h 127.0.0.1 `
+            -p 55439 `
+            -U notesci `
+            -d postgres `
+            -v ON_ERROR_STOP=1 `
+            -q `
+            -c "CREATE DATABASE notesci OWNER notesci"
+          if ($LASTEXITCODE -ne 0) {
+            throw "backend startup smoke database creation failed with exit code $LASTEXITCODE"
+          }
+
+          $backendOut = Join-Path $env:TEMP "notesci-backend-startup-smoke.out.log"
+          $backendErr = Join-Path $env:TEMP "notesci-backend-startup-smoke.err.log"
+          Remove-Item -LiteralPath $backendOut -Force -ErrorAction SilentlyContinue
+          Remove-Item -LiteralPath $backendErr -Force -ErrorAction SilentlyContinue
+          $env:PYTHONPATH = Join-Path $installDir "backend/src"
+          $env:DATABASE_URL = "postgresql://notesci:notesci_local@127.0.0.1:55439/notesci"
+          $env:NOTESCI_STATIC_DIR = Join-Path $installDir "frontend"
+          $env:NOTESCI_LOCAL_MODE = "1"
+          $env:NOTESCI_LOCAL_TOKEN_PATH = Join-Path $env:TEMP "notesci-smoke-session-token"
+          $backendProc = Start-Process `
+            -FilePath (Join-Path $installDir "python/python.exe") `
+            -ArgumentList '-m notesci.serve --host 127.0.0.1 --port 18765' `
+            -RedirectStandardOutput $backendOut `
+            -RedirectStandardError $backendErr `
+            -PassThru
+          try {
+            $deadline = (Get-Date).AddSeconds(90)
+            $ready = $false
+            while ((Get-Date) -lt $deadline) {
+              $backendProc.Refresh()
+              if ($backendProc.HasExited) {
+                if (Test-Path -LiteralPath $backendOut) {
+                  Get-Content -LiteralPath $backendOut | Write-Host
+                }
+                if (Test-Path -LiteralPath $backendErr) {
+                  Get-Content -LiteralPath $backendErr | Write-Host
+                }
+                throw "installed backend exited before /readyz with code $($backendProc.ExitCode)"
+              }
+              try {
+                $response = Invoke-WebRequest -Uri "http://127.0.0.1:18765/readyz" -UseBasicParsing -TimeoutSec 2
+                if ($response.StatusCode -eq 200) {
+                  $ready = $true
+                  break
+                }
+              } catch {
+                Start-Sleep -Milliseconds 500
+              }
+            }
+            if (-not $ready) {
+              if (Test-Path -LiteralPath $backendOut) {
+                Get-Content -LiteralPath $backendOut | Write-Host
+              }
+              if (Test-Path -LiteralPath $backendErr) {
+                Get-Content -LiteralPath $backendErr | Write-Host
+              }
+              throw "installed backend did not become ready within 90s"
+            }
+            Write-Host "Installed backend /readyz smoke passed"
+          } finally {
+            if ($backendProc -and -not $backendProc.HasExited) {
+              Stop-Process -Id $backendProc.Id -Force -ErrorAction SilentlyContinue
+              $backendProc.WaitForExit(10000) | Out-Null
+            }
+          }
+
           $pythonLock = Start-Process `
             -FilePath (Join-Path $installDir "python/python.exe") `
             -ArgumentList '-c "import time; time.sleep(300)"' `
