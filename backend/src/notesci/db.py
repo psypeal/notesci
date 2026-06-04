@@ -13,7 +13,18 @@ _pool: AsyncConnectionPool | None = None
 async def init_pool() -> AsyncConnectionPool:
     global _pool
     if _pool is None:
-        _pool = AsyncConnectionPool(settings.database_url, min_size=1, max_size=10, open=False)
+        # Keep desktop startup failures fast. The previous 30s default
+        # made Windows event-loop/DB failures look like a multi-minute
+        # frozen launch because readiness polling kept waiting after the
+        # pool was already doomed.
+        _pool = AsyncConnectionPool(
+            settings.database_url,
+            min_size=1,
+            max_size=10,
+            open=False,
+            timeout=5.0,
+            reconnect_timeout=10.0,
+        )
         await _pool.open()
         async with _pool.connection() as conn:
             # `IF NOT EXISTS` still isn't atomic — two workers booting

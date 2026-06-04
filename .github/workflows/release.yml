@@ -338,6 +338,7 @@ jobs:
               "pg/share/extension/vector.control",
               "python/python.exe",
               "backend/src/notesci/main.py",
+              "backend/src/notesci/serve.py",
               "frontend/index.html"
             )
             foreach ($rel in $required) {
@@ -361,6 +362,10 @@ jobs:
             & (Join-Path $installDir "python/python.exe") -c "import uvicorn; import notesci.main; print('backend import OK')"
             if ($LASTEXITCODE -ne 0) {
               throw "installed bundled Python backend import failed with exit code $LASTEXITCODE"
+            }
+            & (Join-Path $installDir "python/python.exe") -m notesci.serve --help | Out-Null
+            if ($LASTEXITCODE -ne 0) {
+              throw "installed bundled Python backend launcher failed with exit code $LASTEXITCODE"
             }
           }
 

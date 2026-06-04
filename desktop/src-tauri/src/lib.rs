@@ -214,10 +214,11 @@ pub fn run() {
                                 "backend spawned, waiting for {}:{}",
                                 BACKEND_HOST, BACKEND_PORT
                             );
-                            if let Err(err) = wait_for_backend(
+                            if let Err(err) = wait_for_backend_child(
                                 BACKEND_HOST,
                                 BACKEND_PORT,
                                 startup_timeout,
+                                &mut child,
                             ) {
                                 warn!("backend readiness check failed: {err}");
                                 let status = child.try_wait().ok().flatten();
@@ -522,13 +523,11 @@ fn spawn_backend(layout: &Layout, env: &HashMap<String, String>) -> std::io::Res
     let mut cmd = Command::new(&layout.python);
     cmd.args([
         "-m",
-        "uvicorn",
-        "notesci.main:app",
+        "notesci.serve",
         "--host",
         BACKEND_HOST,
         "--port",
         &port_str,
-        "--no-server-header",
     ])
     .current_dir(&layout.backend_cwd)
     .env("PYTHONPATH", &layout.pythonpath)
@@ -569,12 +568,48 @@ fn wait_for_backend(host: &str, port: u16, timeout: Duration) -> Result<(), Stri
     ))
 }
 
+fn wait_for_backend_child(
+    host: &str,
+    port: u16,
+    timeout: Duration,
+    child: &mut Child,
+) -> Result<(), String> {
+    let addr = format!("{host}:{port}");
+    let start = Instant::now();
+    let mut last_error: Option<String> = None;
+    while start.elapsed() < timeout {
+        if let Some(status) = child
+            .try_wait()
+            .map_err(|e| format!("backend status check failed: {e}"))?
+        {
+            return Err(format!("backend process exited before ready: {status}"));
+        }
+        if let Err(err) = wait_for_readyz(&addr) {
+            last_error = Some(err);
+        } else {
+            return Ok(());
+        }
+        thread::sleep(STARTUP_POLL_INTERVAL);
+    }
+    Err(format!(
+        "backend at {addr} did not become ready within {:?}: {}",
+        timeout,
+        last_error.unwrap_or_else(|| "connection refused".to_string())
+    ))
+}
+
 fn wait_for_readyz(addr: &str) -> Result<(), String> {
     let mut stream = TcpStream::connect_timeout(
         &addr.parse().map_err(|e| format!("bad addr {addr}: {e}"))?,
         Duration::from_millis(500),
     )
     .map_err(|e| format!("connection failed: {e}"))?;
+    stream
+        .set_read_timeout(Some(Duration::from_millis(500)))
+        .map_err(|e| format!("readyz read timeout setup failed: {e}"))?;
+    stream
+        .set_write_timeout(Some(Duration::from_millis(500)))
+        .map_err(|e| format!("readyz write timeout setup failed: {e}"))?;
     let request = format!(
         "GET /readyz HTTP/1.1\r\nHost: {addr}\r\nConnection: close\r\nUser-Agent: notesci-desktop\r\n\r\n"
     );

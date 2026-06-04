@@ -1,4 +1,5 @@
 import contextvars
+import asyncio
 import hashlib
 import json
 import logging
@@ -6,6 +7,7 @@ import os
 from pathlib import Path as _Path
 import re
 import secrets
+import sys
 import time
 import uuid
 from collections import defaultdict
@@ -15,8 +17,16 @@ from typing import Any, Literal
 from uuid import UUID
 from urllib.parse import quote, quote_plus, urlparse
 
+# Defensive fallback for non-desktop launchers. The bundled desktop app
+# normally enters through notesci.serve, which sets this before uvicorn
+# creates the loop. Keeping the guard here protects direct imports on
+# Windows where no event loop has been created yet.
+if sys.platform == "win32":
+    policy_cls = getattr(asyncio, "WindowsSelectorEventLoopPolicy", None)
+    if policy_cls is not None:
+        asyncio.set_event_loop_policy(policy_cls())
+
 import psycopg
-import asyncio
 
 from fastapi import Depends, FastAPI, File, Form, Header, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
