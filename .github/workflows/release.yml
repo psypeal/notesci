@@ -430,6 +430,7 @@ jobs:
           $env:NOTESCI_STATIC_DIR = Join-Path $installDir "frontend"
           $env:NOTESCI_LOCAL_MODE = "1"
           $env:NOTESCI_LOCAL_TOKEN_PATH = Join-Path $env:TEMP "notesci-smoke-session-token"
+          Remove-Item -LiteralPath $env:NOTESCI_LOCAL_TOKEN_PATH -Force -ErrorAction SilentlyContinue
           $backendProc = Start-Process `
             -FilePath (Join-Path $installDir "python/python.exe") `
             -ArgumentList '-m notesci.serve --host 127.0.0.1 --port 18765' `
@@ -470,6 +471,65 @@ jobs:
               throw "installed backend did not become ready within 90s"
             }
             Write-Host "Installed backend /readyz smoke passed"
+
+            $tokenResponse = Invoke-RestMethod `
+              -Uri "http://127.0.0.1:18765/api/auth/local-token" `
+              -Method Get `
+              -TimeoutSec 10
+            if (-not $tokenResponse.token) {
+              throw "local auth smoke did not return a token"
+            }
+            $authHeaders = @{
+              Authorization = "Bearer $($tokenResponse.token)"
+            }
+
+            $me = Invoke-RestMethod `
+              -Uri "http://127.0.0.1:18765/api/me" `
+              -Headers $authHeaders `
+              -TimeoutSec 10
+            if ($me.email -ne "local@notesci.app") {
+              throw "local auth smoke returned unexpected member email: $($me.email)"
+            }
+
+            $profile = Invoke-RestMethod `
+              -Uri "http://127.0.0.1:18765/api/me" `
+              -Method Patch `
+              -Headers $authHeaders `
+              -ContentType "application/json" `
+              -Body (@{ display_name = "Smoke User" } | ConvertTo-Json -Compress) `
+              -TimeoutSec 10
+            if ($profile.display_name -ne "Smoke User") {
+              throw "profile smoke failed to update display_name"
+            }
+
+            Invoke-RestMethod `
+              -Uri "http://127.0.0.1:18765/api/me/provider-keys" `
+              -Headers $authHeaders `
+              -TimeoutSec 10 | Out-Null
+            Invoke-RestMethod `
+              -Uri "http://127.0.0.1:18765/api/providers/available" `
+              -Headers $authHeaders `
+              -TimeoutSec 10 | Out-Null
+            Invoke-RestMethod `
+              -Uri "http://127.0.0.1:18765/api/mcp/catalog" `
+              -Headers $authHeaders `
+              -TimeoutSec 10 | Out-Null
+            Invoke-RestMethod `
+              -Uri "http://127.0.0.1:18765/api/system/tools" `
+              -Headers $authHeaders `
+              -TimeoutSec 10 | Out-Null
+
+            $createdProject = Invoke-RestMethod `
+              -Uri "http://127.0.0.1:18765/api/projects" `
+              -Method Post `
+              -Headers $authHeaders `
+              -ContentType "application/json" `
+              -Body (@{ name = "Smoke Project" } | ConvertTo-Json -Compress) `
+              -TimeoutSec 10
+            if (-not $createdProject.id) {
+              throw "project smoke did not create a project"
+            }
+            Write-Host "Installed backend local-mode authenticated API smoke passed"
           } finally {
             if ($backendProc -and -not $backendProc.HasExited) {
               Stop-Process -Id $backendProc.Id -Force -ErrorAction SilentlyContinue
