@@ -27,6 +27,7 @@ import json
 import logging
 import os
 from pathlib import Path
+import re
 import shutil
 import sys
 import time
@@ -35,7 +36,7 @@ from typing import Any
 from uuid import UUID
 
 import psycopg
-from langchain_core.tools import BaseTool
+from langchain_core.tools import BaseTool, StructuredTool
 from langchain_mcp_adapters.client import MultiServerMCPClient
 
 from ..crypto import decrypt_config_secrets
@@ -66,6 +67,24 @@ class _CachedTools:
 
 _cache: dict[str, _CachedTools] = {}
 _cache_lock = asyncio.Lock()
+
+_ZOTERO_KEY_RE = re.compile(r"^[A-Za-z0-9]{8}$")
+_ZOTERO_KEY_PATTERNS = (
+    re.compile(r"\*\*Key:\*\*\s*`?([A-Za-z0-9]{8})`?"),
+    re.compile(r"\(Key:\s*([A-Za-z0-9]{8})\)"),
+    re.compile(r"\bKey:\s*`?([A-Za-z0-9]{8})`?"),
+)
+_ZOTERO_COLLECTION_TREE_RE = re.compile(
+    r"\*\*(?P<name>[^*]+)\*\*\s+\(Key:\s*(?P<key>[A-Za-z0-9]{8})\)"
+)
+_ZOTERO_COLLECTION_LINE_RE = re.compile(
+    r"^\s*(?:[-*]\s*)?(?!\*\*)(?P<name>[^\n()]{1,180}?)"
+    r"\s+\(Key:\s*(?P<key>[A-Za-z0-9]{8})\)",
+    re.MULTILINE,
+)
+_ZOTERO_COLLECTION_SEARCH_RE = re.compile(
+    r"##\s+\d+\.\s*(?P<name>[^\n]+)\s+\*\*Key:\*\*\s*`?(?P<key>[A-Za-z0-9]{8})`?"
+)
 
 
 def _signature(rows: list) -> str:
@@ -267,6 +286,273 @@ def _is_tool_allowed(tool_name: str, grants: dict | None) -> bool:
     return tool_name in (grants.get("tools") or [])
 
 
+async def _invoke_mcp_tool(tool: BaseTool, args: dict[str, Any]) -> Any:
+    """Invoke a LangChain MCP tool with a dict payload."""
+    return await tool.ainvoke(args)
+
+
+def _tool_arg_names(tool: BaseTool) -> set[str]:
+    args = getattr(tool, "args", None)
+    if isinstance(args, dict):
+        return {str(key) for key in args}
+    schema = getattr(tool, "args_schema", None)
+    fields = getattr(schema, "model_fields", None)
+    if isinstance(fields, dict):
+        return {str(key) for key in fields}
+    fields = getattr(schema, "__fields__", None)
+    if isinstance(fields, dict):
+        return {str(key) for key in fields}
+    return set()
+
+
+def _extract_zotero_collection_key(text: object) -> str | None:
+    raw = str(text or "")
+    for pattern in _ZOTERO_KEY_PATTERNS:
+        match = pattern.search(raw)
+        if match:
+            return match.group(1).upper()
+    return None
+
+
+def _extract_zotero_collection_keys(text: object) -> list[str]:
+    raw = str(text or "")
+    keys: list[str] = []
+    seen: set[str] = set()
+    for pattern in _ZOTERO_KEY_PATTERNS:
+        for match in pattern.finditer(raw):
+            key = match.group(1).upper()
+            if key in seen:
+                continue
+            seen.add(key)
+            keys.append(key)
+    return keys
+
+
+def _normalize_zotero_collection_name(text: str) -> str:
+    return " ".join(str(text or "").casefold().split())
+
+
+def _zotero_collection_matches_for_name(
+    text: object,
+    collection_name: str,
+) -> list[tuple[str, str]]:
+    wanted = _normalize_zotero_collection_name(collection_name)
+    if not wanted:
+        return []
+    raw = str(text or "")
+    matches = [
+        *_ZOTERO_COLLECTION_TREE_RE.finditer(raw),
+        *_ZOTERO_COLLECTION_LINE_RE.finditer(raw),
+    ]
+    exact = [
+        (match.group("name").strip(), match.group("key").upper())
+        for match in matches
+        if _normalize_zotero_collection_name(match.group("name")) == wanted
+    ]
+    if exact:
+        return exact
+    return [
+        (match.group("name").strip(), match.group("key").upper())
+        for match in matches
+        if (
+            wanted in _normalize_zotero_collection_name(match.group("name"))
+            or _normalize_zotero_collection_name(match.group("name")) in wanted
+        )
+    ]
+
+
+def _zotero_collection_search_matches_for_name(
+    text: object,
+    collection_name: str,
+) -> list[tuple[str, str]]:
+    wanted = _normalize_zotero_collection_name(collection_name)
+    if not wanted:
+        return []
+    matches = list(_ZOTERO_COLLECTION_SEARCH_RE.finditer(str(text or "")))
+    exact = [
+        (match.group("name").strip(), match.group("key").upper())
+        for match in matches
+        if _normalize_zotero_collection_name(match.group("name")) == wanted
+    ]
+    if exact:
+        return exact
+    partial = [
+        (match.group("name").strip(), match.group("key").upper())
+        for match in matches
+        if (
+            wanted in _normalize_zotero_collection_name(match.group("name"))
+            or _normalize_zotero_collection_name(match.group("name")) in wanted
+        )
+    ]
+    return partial or [
+        (match.group("name").strip(), match.group("key").upper())
+        for match in matches
+    ]
+
+
+async def _resolve_zotero_collection_key(
+    collection_ref: str,
+    search_tool: BaseTool | None,
+    collections_tool: BaseTool | None,
+) -> tuple[str | None, str | None]:
+    """Resolve a user-facing Zotero collection name to its 8-char key.
+
+    Upstream ``zotero_get_collection_items`` requires ``collection_key``.
+    Models often pass the visible collection name instead, especially on
+    Windows real-machine sessions where the user asks for a named collection.
+    Resolve the name in Notesci before the raw MCP server sees the call.
+    """
+    candidate = str(collection_ref or "").strip()
+    if not candidate:
+        return None, "No collection name or key was provided."
+    if _ZOTERO_KEY_RE.fullmatch(candidate):
+        return candidate.upper(), None
+
+    if collections_tool is not None:
+        try:
+            payload: dict[str, Any] = {}
+            if "limit" in _tool_arg_names(collections_tool):
+                payload["limit"] = 5000
+            result = await _invoke_mcp_tool(collections_tool, payload)
+            matches = _zotero_collection_matches_for_name(result, candidate)
+            if len(matches) == 1:
+                return matches[0][1], None
+            if len(matches) > 1:
+                shown = ", ".join(f"{name} ({key})" for name, key in matches[:8])
+                return None, (
+                    f"Multiple Zotero collections match {candidate!r}: {shown}. "
+                    "Copy one of these keys and retry with the exact "
+                    "8-character collection_key."
+                )
+        except Exception as exc:
+            log.warning("zotero collection listing failed for %r: %s", candidate, exc)
+
+    if search_tool is not None:
+        try:
+            result = await _invoke_mcp_tool(search_tool, {"query": candidate})
+            matches = _zotero_collection_search_matches_for_name(result, candidate)
+            if len(matches) == 1:
+                return matches[0][1], None
+            if len(matches) > 1:
+                shown = ", ".join(f"{name} ({key})" for name, key in matches[:8])
+                return None, (
+                    f"Multiple Zotero collections match {candidate!r}: {shown}. "
+                    "Copy one of these keys and retry with the exact "
+                    "8-character collection_key."
+                )
+            fallback_keys = _extract_zotero_collection_keys(result)
+            if len(fallback_keys) == 1:
+                return fallback_keys[0], None
+            if len(fallback_keys) > 1:
+                shown = ", ".join(fallback_keys[:8])
+                return None, (
+                    f"Multiple Zotero collection keys were returned for {candidate!r}: "
+                    f"{shown}. Copy one of these keys and retry with the exact "
+                    "8-character collection_key."
+                )
+            return None, (
+                f"Could not resolve Zotero collection {candidate!r} to an "
+                "8-character key. Use zotero_get_collections to inspect the "
+                "available collections and retry with the displayed key."
+            )
+        except Exception as exc:
+            log.warning("zotero collection search failed for %r: %s", candidate, exc)
+
+    return None, (
+        f"Could not resolve Zotero collection {candidate!r}. First call "
+        "zotero_get_collections or zotero_search_collections and use the "
+        "8-character collection key shown in the result."
+    )
+
+
+def _wrap_zotero_collection_items_tool(
+    tool: BaseTool,
+    search_tool: BaseTool | None,
+    collections_tool: BaseTool | None,
+) -> BaseTool:
+    """Accept collection names for Zotero collection-item browsing.
+
+    The upstream MCP tool is intentionally key-based. This wrapper keeps the
+    same exposed tool name but makes Notesci more forgiving by resolving a
+    human-readable collection name to the Zotero key first.
+    """
+
+    async def zotero_get_collection_items(
+        collection_key: str = "",
+        collection_name: str | None = None,
+        collection: str | None = None,
+        name: str | None = None,
+        title: str | None = None,
+        query: str | None = None,
+        detail: str = "summary",
+        limit: int | str | None = 50,
+    ) -> str:
+        collection_ref = (
+            collection_key
+            or collection_name
+            or collection
+            or name
+            or title
+            or query
+            or ""
+        )
+        resolved_key, error = await _resolve_zotero_collection_key(
+            collection_ref,
+            search_tool,
+            collections_tool,
+        )
+        if not resolved_key:
+            return error or "Could not resolve Zotero collection key."
+        upstream_args = _tool_arg_names(tool)
+        payload: dict[str, Any] = {"collection_key": resolved_key}
+        if "detail" in upstream_args:
+            payload["detail"] = detail
+        if "limit" in upstream_args:
+            payload["limit"] = limit
+        return await _invoke_mcp_tool(
+            tool,
+            payload,
+        )
+
+    description = (
+        f"{getattr(tool, 'description', '') or ''}\n\n"
+        "Notesci accepts either the 8-character Zotero collection key or a "
+        "human-readable collection name. Prefer collection_key when the key "
+        "is known; otherwise pass the visible collection name as "
+        "collection_name, collection, query, name, or title. Notesci resolves "
+        "names before fetching items. If multiple collections match the name, "
+        "copy one of the returned keys and retry with the exact 8-character "
+        "collection_key."
+    ).strip()
+    return StructuredTool.from_function(
+        coroutine=zotero_get_collection_items,
+        name=tool.name,
+        description=description,
+        return_direct=getattr(tool, "return_direct", False),
+    )
+
+
+def _harden_zotero_tools(tools: list[BaseTool]) -> list[BaseTool]:
+    by_original: dict[str, BaseTool] = {}
+    for tool in tools:
+        original = tool.name.split("__", 1)[1] if "__" in tool.name else tool.name
+        by_original[original] = tool
+
+    collection_items = by_original.get("zotero_get_collection_items")
+    if collection_items is None:
+        return tools
+
+    wrapped_collection_items = _wrap_zotero_collection_items_tool(
+        collection_items,
+        by_original.get("zotero_search_collections"),
+        by_original.get("zotero_get_collections"),
+    )
+    return [
+        wrapped_collection_items if tool is collection_items else tool
+        for tool in tools
+    ]
+
+
 async def load_workspace_mcp_tools(
     conn: psycopg.AsyncConnection,
     workspace_id: UUID,
@@ -362,6 +648,7 @@ async def load_workspace_mcp_tools(
             load_errors[str(slug)] = str(e)
             continue
         grants = grants_by_slug.get(slug, {})
+        allowed_tools: list[BaseTool] = []
         for tool in server_tools:
             # With tool_name_prefix=True, tool.name is "{slug}__{original}".
             # Grant matching is against the original (un-prefixed) name.
@@ -370,6 +657,10 @@ async def load_workspace_mcp_tools(
             )
             if not _is_tool_allowed(original, grants):
                 continue
+            allowed_tools.append(tool)
+        if str(slug).lower() == "zotero":
+            allowed_tools = _harden_zotero_tools(allowed_tools)
+        for tool in allowed_tools:
             out_tools.append(tool)
             tool_to_server[tool.name] = server_id
 

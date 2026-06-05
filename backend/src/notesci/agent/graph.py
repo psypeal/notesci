@@ -1489,12 +1489,36 @@ def _source_tool_priority(tool: BaseTool, query: str) -> int:
             )
         )
         asks_collections = "collection" in q or "collections" in q
+        asks_collection_items = asks_collections and any(
+            token in q
+            for token in (
+                "item",
+                "items",
+                "paper",
+                "papers",
+                "reference",
+                "references",
+                "entry",
+                "entries",
+                "content",
+                "contents",
+                "inside",
+                "from collection",
+                "in collection",
+            )
+        )
         asks_recent = "recent" in q or "latest" in q or "newly added" in q
         asks_tags = "tag" in q or "tags" in q
         if asks_library_inventory and "list_libraries" in unprefixed_name:
             return 0
+        if asks_collection_items and "get_collection_items" in unprefixed_name:
+            return 0
+        if asks_collection_items and "search_collections" in unprefixed_name:
+            return 1
         if asks_collections and "get_collections" in unprefixed_name:
             return 0
+        if asks_collections and "search_collections" in unprefixed_name:
+            return 1
         if asks_recent and "get_recent" in unprefixed_name:
             return 0
         if asks_tags and "get_tags" in unprefixed_name:
@@ -2027,8 +2051,37 @@ def _format_mcp_tool_status(
         front = requested[:8] if requested else mcp_tool_names[:10]
         joined = f"{', '.join(front)}..."
 
-    failure_guidance = ""
     q = _normalize_space_text(last_human_text or "")
+    if "zotero" in by_server and "collection" in q:
+        collection_item_intent = any(
+            token in q
+            for token in (
+                "item",
+                "items",
+                "paper",
+                "papers",
+                "reference",
+                "references",
+                "entry",
+                "entries",
+                "content",
+                "contents",
+            )
+        )
+        if collection_item_intent:
+            joined = (
+                f"{joined} | Zotero collection workflow: resolve the "
+                "8-character collection key first with "
+                "zotero__zotero_search_collections or "
+                "zotero__zotero_get_collections, then call "
+                "zotero__zotero_get_collection_items(collection_key=...). "
+                "Do not pass a human-readable collection name as collection_key. "
+                "If the collection is in another Zotero library or group, call "
+                "zotero__zotero_list_libraries and "
+                "zotero__zotero_switch_library before resolving collections."
+            )
+
+    failure_guidance = ""
     requested_failed = [
         server for server in failed_servers if server.lower() in q
     ]

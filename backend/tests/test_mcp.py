@@ -24,6 +24,14 @@ import uuid
 import pytest
 from httpx import ASGITransport, AsyncClient
 
+from notesci.agent.mcp_tools import (
+    _extract_zotero_collection_keys,
+    _resolve_zotero_collection_key,
+    _tool_arg_names,
+    _wrap_zotero_collection_items_tool,
+    _zotero_collection_matches_for_name,
+    _zotero_collection_search_matches_for_name,
+)
 from notesci.config import settings
 from notesci.db import get_conn
 from notesci.main import app
@@ -263,3 +271,363 @@ async def test_mcp_get_and_list_apply_redaction(mcp_client: AsyncClient):
     matched = [s for s in r.json() if s["id"] == sid]
     assert matched, "newly-installed server should be in the list"
     assert matched[0]["config"]["headers"]["Authorization"] == "***"
+
+
+# ---------------------------------------------------------------------------
+# 5. Zotero collection-name resolution
+# ---------------------------------------------------------------------------
+
+
+def test_zotero_collection_tree_match_exact_name():
+    tree = """
+# Zotero Collections
+
+- **Brain Aging** (Key: ABCD1234)
+ - **Brain Aging Methods** (Key: EFGH5678)
+"""
+    assert _zotero_collection_matches_for_name(tree, "Brain Aging") == [
+        ("Brain Aging", "ABCD1234")
+    ]
+
+
+def test_zotero_collection_tree_match_ambiguous_partial_name():
+    tree = """
+# Zotero Collections
+
+- **Brain Aging** (Key: ABCD1234)
+- **Brain Aging Methods** (Key: EFGH5678)
+"""
+    assert _zotero_collection_matches_for_name(tree, "Brain") == [
+        ("Brain Aging", "ABCD1234"),
+        ("Brain Aging Methods", "EFGH5678"),
+    ]
+
+
+def test_zotero_collection_tree_match_plain_line_name():
+    tree = """
+# Zotero Collections
+
+- Brain Aging (Key: ABCD1234)
+- Other (Key: EFGH5678)
+"""
+    assert _zotero_collection_matches_for_name(tree, "Brain Aging") == [
+        ("Brain Aging", "ABCD1234")
+    ]
+
+
+def test_zotero_collection_tree_match_nested_plain_line_name():
+    tree = """
+# Zotero Collections
+
+- Parent (Key: ABCD1234)
+  - Brain Aging (Key: EFGH5678)
+"""
+    assert _zotero_collection_matches_for_name(tree, "Brain Aging") == [
+        ("Brain Aging", "EFGH5678")
+    ]
+
+
+def test_zotero_collection_tree_match_duplicate_terminal_names():
+    tree = """
+# Zotero Collections
+
+- Brain Aging (Key: ABCD1234)
+- Parent (Key: IJKL9012)
+  - Brain Aging (Key: EFGH5678)
+"""
+    assert _zotero_collection_matches_for_name(tree, "Brain Aging") == [
+        ("Brain Aging", "ABCD1234"),
+        ("Brain Aging", "EFGH5678"),
+    ]
+
+
+def test_zotero_collection_search_match_exact_name():
+    search = """
+# Collections matching 'Brain Aging'
+
+## 1. Brain Aging
+
+**Key:** `ABCD1234`
+
+## 2. Brain Aging Methods
+
+**Key:** `EFGH5678`
+"""
+    assert _zotero_collection_search_matches_for_name(search, "Brain Aging") == [
+        ("Brain Aging", "ABCD1234")
+    ]
+
+
+def test_zotero_collection_search_match_ambiguous_partial_name():
+    search = """
+# Collections matching 'Brain'
+
+## 1. Brain Aging
+**Key:** `ABCD1234`
+
+## 2. Brain Aging Methods
+**Key:** `EFGH5678`
+"""
+    assert _zotero_collection_search_matches_for_name(search, "Brain") == [
+        ("Brain Aging", "ABCD1234"),
+        ("Brain Aging Methods", "EFGH5678"),
+    ]
+
+
+def test_zotero_collection_key_fallback_extracts_all_unique_keys():
+    text = """
+Possible matches:
+- Brain Aging, Key: ABCD1234
+- Brain Aging Methods, Key: EFGH5678
+- Duplicate line, Key: ABCD1234
+"""
+    assert _extract_zotero_collection_keys(text) == ["ABCD1234", "EFGH5678"]
+
+
+def test_mcp_tool_arg_names_supports_common_schema_shapes():
+    class ArgsTool:
+        args = {"collection_key": {}, "limit": {}}
+
+    class V2Schema:
+        model_fields = {"collection_key": object(), "detail": object()}
+
+    class V2Tool:
+        args_schema = V2Schema
+
+    class V1Schema:
+        __fields__ = {"collection_key": object(), "limit": object()}
+
+    class V1Tool:
+        args_schema = V1Schema
+
+    assert _tool_arg_names(ArgsTool()) == {"collection_key", "limit"}
+    assert _tool_arg_names(V2Tool()) == {"collection_key", "detail"}
+    assert _tool_arg_names(V1Tool()) == {"collection_key", "limit"}
+
+
+class _FakeMcpTool:
+    def __init__(
+        self,
+        response: str,
+        args: dict | None = None,
+        name: str = "fake_tool",
+    ):
+        self.name = name
+        self.description = ""
+        self.return_direct = False
+        self.response = response
+        self.args = args or {}
+        self.calls: list[dict] = []
+
+    async def ainvoke(self, payload: dict):
+        self.calls.append(payload)
+        return self.response
+
+
+async def test_zotero_resolver_accepts_exact_collection_key():
+    search = _FakeMcpTool("unused")
+    collections = _FakeMcpTool("unused")
+    key, error = await _resolve_zotero_collection_key(
+        "ABCD1234",
+        search,
+        collections,
+    )
+    assert key == "ABCD1234"
+    assert error is None
+    assert search.calls == []
+    assert collections.calls == []
+
+
+async def test_zotero_resolver_resolves_unique_collection_name_from_tree():
+    collections = _FakeMcpTool(
+        """
+# Zotero Collections
+
+- **Brain Aging** (Key: ABCD1234)
+- **Other** (Key: EFGH5678)
+""",
+        args={"limit": {}},
+    )
+    search = _FakeMcpTool("unused")
+    key, error = await _resolve_zotero_collection_key(
+        "Brain Aging",
+        search,
+        collections,
+    )
+    assert key == "ABCD1234"
+    assert error is None
+    assert collections.calls == [{"limit": 5000}]
+    assert search.calls == []
+
+
+async def test_zotero_resolver_rejects_ambiguous_collection_name():
+    collections = _FakeMcpTool(
+        """
+# Zotero Collections
+
+- **Brain Aging** (Key: ABCD1234)
+- **Brain Aging Methods** (Key: EFGH5678)
+""",
+        args={"limit": {}},
+    )
+    search = _FakeMcpTool("unused")
+    key, error = await _resolve_zotero_collection_key(
+        "Brain",
+        search,
+        collections,
+    )
+    assert key is None
+    assert error is not None
+    assert "Multiple Zotero collections match" in error
+    assert "ABCD1234" in error
+    assert "EFGH5678" in error
+    assert search.calls == []
+
+
+async def test_zotero_resolver_rejects_unstructured_multiple_key_fallback():
+    search = _FakeMcpTool(
+        """
+Possible matches:
+- Brain Aging, Key: ABCD1234
+- Brain Aging Methods, Key: EFGH5678
+"""
+    )
+    key, error = await _resolve_zotero_collection_key(
+        "Brain",
+        search,
+        collections_tool=None,
+    )
+    assert key is None
+    assert error is not None
+    assert "Multiple Zotero collection keys" in error
+    assert "ABCD1234" in error
+    assert "EFGH5678" in error
+
+
+async def test_zotero_collection_items_wrapper_accepts_collection_name_alias():
+    upstream = _FakeMcpTool(
+        "items",
+        args={"collection_key": {}, "limit": {}},
+        name="zotero__zotero_get_collection_items",
+    )
+    collections = _FakeMcpTool(
+        """
+# Zotero Collections
+
+- **Brain Aging** (Key: ABCD1234)
+""",
+        args={"limit": {}},
+        name="zotero__zotero_get_collections",
+    )
+    wrapped = _wrap_zotero_collection_items_tool(
+        upstream,
+        search_tool=None,
+        collections_tool=collections,
+    )
+
+    result = await wrapped.ainvoke({"collection_name": "Brain Aging"})
+
+    assert result == "items"
+    assert collections.calls == [{"limit": 5000}]
+    assert upstream.calls == [{"collection_key": "ABCD1234", "limit": 50}]
+
+
+async def test_zotero_collection_items_wrapper_accepts_collection_alias():
+    upstream = _FakeMcpTool(
+        "items",
+        args={"collection_key": {}},
+        name="zotero__zotero_get_collection_items",
+    )
+    collections = _FakeMcpTool(
+        """
+# Zotero Collections
+
+- **Brain Aging** (Key: ABCD1234)
+""",
+        name="zotero__zotero_get_collections",
+    )
+    wrapped = _wrap_zotero_collection_items_tool(
+        upstream,
+        search_tool=None,
+        collections_tool=collections,
+    )
+
+    result = await wrapped.ainvoke({"collection": "Brain Aging"})
+
+    assert result == "items"
+    assert collections.calls == [{}]
+    assert upstream.calls == [{"collection_key": "ABCD1234"}]
+
+
+async def test_zotero_collection_items_wrapper_accepts_query_alias():
+    upstream = _FakeMcpTool(
+        "items",
+        args={"collection_key": {}},
+        name="zotero__zotero_get_collection_items",
+    )
+    collections = _FakeMcpTool(
+        """
+# Zotero Collections
+
+- **Brain Aging** (Key: ABCD1234)
+""",
+        name="zotero__zotero_get_collections",
+    )
+    wrapped = _wrap_zotero_collection_items_tool(
+        upstream,
+        search_tool=None,
+        collections_tool=collections,
+    )
+
+    result = await wrapped.ainvoke({"query": "Brain Aging"})
+
+    assert result == "items"
+    assert upstream.calls == [{"collection_key": "ABCD1234"}]
+
+
+async def test_zotero_collection_items_wrapper_rejects_ambiguous_name_before_fetch():
+    upstream = _FakeMcpTool(
+        "items",
+        args={"collection_key": {}, "limit": {}},
+        name="zotero__zotero_get_collection_items",
+    )
+    collections = _FakeMcpTool(
+        """
+# Zotero Collections
+
+- **Brain Aging** (Key: ABCD1234)
+- **Brain Aging Methods** (Key: EFGH5678)
+""",
+        args={"limit": {}},
+        name="zotero__zotero_get_collections",
+    )
+    wrapped = _wrap_zotero_collection_items_tool(
+        upstream,
+        search_tool=None,
+        collections_tool=collections,
+    )
+
+    result = await wrapped.ainvoke({"collection_name": "Brain"})
+
+    assert "Multiple Zotero collections match" in result
+    assert "ABCD1234" in result
+    assert "EFGH5678" in result
+    assert upstream.calls == []
+
+
+async def test_zotero_collection_items_wrapper_rejects_missing_collection_ref():
+    upstream = _FakeMcpTool(
+        "items",
+        args={"collection_key": {}},
+        name="zotero__zotero_get_collection_items",
+    )
+    wrapped = _wrap_zotero_collection_items_tool(
+        upstream,
+        search_tool=None,
+        collections_tool=None,
+    )
+
+    result = await wrapped.ainvoke({})
+
+    assert "No collection name or key was provided" in result
+    assert upstream.calls == []

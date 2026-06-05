@@ -111,25 +111,37 @@ export function PageScaffold({
         className="hide-on-small"
         style={{
           background: 'var(--color-paper-3)',
+          height: '100dvh',
+          maxHeight: '100dvh',
           minHeight: '100vh',
+          minWidth: 0,
           display: 'flex',
           flexDirection: 'column',
           overflow: 'hidden',
         }}
       >
       <DBTopBar crumbs={crumbs} initials={user.initials} />
-      <div style={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
+      <div style={{ flex: 1, minHeight: 0, minWidth: 0, display: 'flex', overflow: 'hidden' }}>
         <DBRail active={active} user={user} />
         <main
           id="main"
+          className="ns-steady-scroll"
+          data-notesci-scroll-host="dashboard"
           style={{
             flex: 1,
-            overflow: 'auto',
+            minHeight: 0,
+            minWidth: 0,
+            overflowY: 'auto',
+            overflowX: 'hidden',
+            overscrollBehavior: 'contain',
+            scrollbarGutter: 'stable',
             padding: '28px 36px',
             width: '100%',
           }}
         >
-          <div style={{ maxWidth: 1100, margin: '0 auto' }}>{children}</div>
+          <div style={{ maxWidth: 1100, minWidth: 0, margin: '0 auto', paddingBottom: 28 }}>
+            {children}
+          </div>
         </main>
       </div>
       </div>
@@ -286,6 +298,7 @@ function DBRail({ active, user }: { active: DashId; user: UserCard }) {
         background: 'var(--color-paper)',
         borderRight: '1px solid var(--color-rule)',
         height: '100%',
+        minHeight: 0,
         overflowY: 'auto',
         flexShrink: 0,
         display: 'flex',
