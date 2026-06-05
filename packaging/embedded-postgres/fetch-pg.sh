@@ -48,8 +48,9 @@ download_archive() {
             out_win="$(cygpath -w "$out")"
         fi
         log "curl failed; retrying download with PowerShell"
-        DOWNLOAD_URL="$url" DOWNLOAD_OUT="$out_win" powershell.exe -NoProfile -Command "\$ErrorActionPreference = 'Stop'; [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; Invoke-WebRequest -Uri \$env:DOWNLOAD_URL -OutFile \$env:DOWNLOAD_OUT -Headers @{ 'User-Agent' = 'Mozilla/5.0 notesci-release-build'; 'Accept' = 'application/zip,application/octet-stream,*/*' }"
-        return 0
+        if DOWNLOAD_URL="$url" DOWNLOAD_OUT="$out_win" powershell.exe -NoProfile -Command "\$ErrorActionPreference = 'Stop'; [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; Invoke-WebRequest -Uri \$env:DOWNLOAD_URL -OutFile \$env:DOWNLOAD_OUT -Headers @{ 'User-Agent' = 'Mozilla/5.0 notesci-release-build'; 'Accept' = 'application/zip,application/octet-stream,*/*' }"; then
+            return 0
+        fi
     fi
 
     return 1
