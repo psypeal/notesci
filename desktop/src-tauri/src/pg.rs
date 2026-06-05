@@ -186,6 +186,7 @@ fn verify_embedded_pg_tree(pg_root: &Path) -> Result<(), String> {
             "bin/libpq.dll",
             "lib/vector.dll",
             "share/extension/vector.control",
+            "share/postgresql/extension/pgcrypto.control",
         ]
         .iter()
         .map(|rel| pg_root.join(rel))

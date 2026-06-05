@@ -309,6 +309,7 @@ jobs:
             make
             mingw-w64-ucrt-x86_64-gcc
             mingw-w64-ucrt-x86_64-libxslt
+            mingw-w64-ucrt-x86_64-openssl
             mingw-w64-ucrt-x86_64-postgresql-16
 
       - name: Build frontend
@@ -323,9 +324,11 @@ jobs:
         run: |
           if [[ -f build/pg-raw/windows/bin/postgres.exe \
              && -f build/pg-raw/windows/lib/vector.dll \
-             && -f build/pg-raw/windows/share/extension/vector.control ]]; then
+             && -f build/pg-raw/windows/share/extension/vector.control \
+             && -f build/pg-raw/windows/share/postgresql/extension/pgcrypto.control ]]; then
             echo "Using cached staged Windows PostgreSQL + pgvector"
           else
+            ./packaging/embedded-postgres/build-pgcrypto-msys2.sh
             ./packaging/embedded-postgres/build-pgvector-msys2.sh
             ./packaging/embedded-postgres/stage-msys2-pg.sh
           fi
@@ -353,7 +356,8 @@ jobs:
             "bin/psql.exe",
             "bin/libpq.dll",
             "lib/vector.dll",
-            "share/extension/vector.control"
+            "share/extension/vector.control",
+            "share/postgresql/extension/pgcrypto.control"
           )
           foreach ($rel in $required) {
             $path = Join-Path $pg $rel
@@ -420,6 +424,7 @@ jobs:
               "pg/bin/libpq.dll",
               "pg/lib/vector.dll",
               "pg/share/extension/vector.control",
+              "pg/share/postgresql/extension/pgcrypto.control",
               "python/python.exe",
               "backend/src/notesci/main.py",
               "backend/src/notesci/serve.py",

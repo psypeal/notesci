@@ -59,6 +59,14 @@ if [[ ! -f "$DEST/share/extension/vector.control" ]]; then
     fi
 fi
 
+mkdir -p "$DEST/share/postgresql/extension"
+if [[ ! -f "$DEST/share/postgresql/extension/pgcrypto.control" ]]; then
+    PGCRYPTO_CONTROL="$(find "$DEST/share" -maxdepth 4 -iname 'pgcrypto.control' -print -quit)"
+    if [[ -n "$PGCRYPTO_CONTROL" ]]; then
+        cp -a "$PGCRYPTO_CONTROL" "$DEST/share/postgresql/extension/pgcrypto.control"
+    fi
+fi
+
 required=(
     "$DEST/bin/postgres.exe"
     "$DEST/bin/initdb.exe"
@@ -67,6 +75,7 @@ required=(
     "$DEST/bin/libpq.dll"
     "$DEST/lib/vector.dll"
     "$DEST/share/extension/vector.control"
+    "$DEST/share/postgresql/extension/pgcrypto.control"
 )
 for path in "${required[@]}"; do
     [[ -f "$path" ]] || { echo "missing staged artifact: $path" >&2; exit 1; }
