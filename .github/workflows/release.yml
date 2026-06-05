@@ -300,6 +300,17 @@ jobs:
           restore-keys: |
             windows-embedded-${{ env.PG_VERSION }}-${{ env.PGVECTOR_VERSION }}-${{ env.PYTHON_VERSION }}-
 
+      - uses: msys2/setup-msys2@v2
+        with:
+          msystem: UCRT64
+          update: true
+          install: >-
+            git
+            make
+            mingw-w64-ucrt-x86_64-gcc
+            mingw-w64-ucrt-x86_64-libxslt
+            mingw-w64-ucrt-x86_64-postgresql-16
+
       - name: Build frontend
         shell: bash
         run: |
@@ -307,11 +318,21 @@ jobs:
           pnpm install --frozen-lockfile
           pnpm build
 
+      - name: Build pgvector and stage MSYS2 PostgreSQL (windows)
+        shell: msys2 {0}
+        run: |
+          if [[ -f build/pg-raw/windows/bin/postgres.exe \
+             && -f build/pg-raw/windows/lib/vector.dll \
+             && -f build/pg-raw/windows/share/extension/vector.control ]]; then
+            echo "Using cached staged Windows PostgreSQL + pgvector"
+          else
+            ./packaging/embedded-postgres/build-pgvector-msys2.sh
+            ./packaging/embedded-postgres/stage-msys2-pg.sh
+          fi
+
       - name: Stage embedded Postgres + Python + backend (windows)
         shell: bash
         run: |
-          ./packaging/embedded-postgres/fetch-pg.sh windows
-          # pgvector Windows build runs separately — uses MSVC, not pgxs.
           ./packaging/embedded-python/fetch-python.sh windows
           ./packaging/embedded-python/build-backend-bundle.sh windows build/py-raw/windows
           R=desktop/src-tauri/resources
@@ -319,18 +340,6 @@ jobs:
           rm -rf "$R/python"   && cp -r build/py-raw/windows   "$R/python"
           rm -rf "$R/backend"  && cp -r build/backend-bundle   "$R/backend"
           rm -rf "$R/frontend" && cp -r frontend/dist          "$R/frontend"
-
-      - name: Build pgvector (Windows / MSVC)
-        shell: pwsh
-        run: |
-          # build-pgvector-win.ps1 self-bootstraps the x64 MSVC env via
-          # vswhere -> vcvars64 (windows-2022 ships VS2022 + the x64 C++
-          # toolset), then nmake /F Makefile.win [install] against the
-          # staged tree. It throws (fails the job) if the build breaks —
-          # no more silently shipping Windows without embeddings.
-          ./packaging/embedded-postgres/build-pgvector-win.ps1 `
-            -PgRoot "desktop/src-tauri/resources/pg" `
-            -PgvectorRef "v$env:PGVECTOR_VERSION"
 
       - name: Validate Windows embedded Postgres bundle
         shell: pwsh
@@ -342,14 +351,7 @@ jobs:
             "bin/initdb.exe",
             "bin/pg_ctl.exe",
             "bin/psql.exe",
-            "bin/icudt67.dll",
-            "bin/icuin67.dll",
-            "bin/icuuc67.dll",
             "bin/libpq.dll",
-            "bin/libssl-3-x64.dll",
-            "bin/libcrypto-3-x64.dll",
-            "bin/libxml2.dll",
-            "bin/zlib1.dll",
             "lib/vector.dll",
             "share/extension/vector.control"
           )
@@ -358,6 +360,20 @@ jobs:
             if (-not (Test-Path -LiteralPath $path)) {
               Get-ChildItem -LiteralPath (Join-Path $pg "bin") | Select-Object Name, Length | Format-Table | Out-String | Write-Host
               throw "Missing Windows embedded Postgres artifact: $path"
+            }
+          }
+          $dllPatterns = @(
+            "libicu*.dll",
+            "libssl*.dll",
+            "libcrypto*.dll",
+            "libxml2*.dll",
+            "zlib*.dll"
+          )
+          foreach ($pattern in $dllPatterns) {
+            $matches = Get-ChildItem -LiteralPath (Join-Path $pg "bin") -Filter $pattern -ErrorAction SilentlyContinue
+            if (-not $matches) {
+              Get-ChildItem -LiteralPath (Join-Path $pg "bin") | Select-Object Name, Length | Format-Table | Out-String | Write-Host
+              throw "Missing Windows embedded Postgres runtime DLL matching: bin/$pattern"
             }
           }
           & (Join-Path $pg "bin/postgres.exe") -V
@@ -401,14 +417,7 @@ jobs:
               "pg/bin/initdb.exe",
               "pg/bin/pg_ctl.exe",
               "pg/bin/psql.exe",
-              "pg/bin/icudt67.dll",
-              "pg/bin/icuin67.dll",
-              "pg/bin/icuuc67.dll",
               "pg/bin/libpq.dll",
-              "pg/bin/libssl-3-x64.dll",
-              "pg/bin/libcrypto-3-x64.dll",
-              "pg/bin/libxml2.dll",
-              "pg/bin/zlib1.dll",
               "pg/lib/vector.dll",
               "pg/share/extension/vector.control",
               "python/python.exe",
@@ -421,6 +430,20 @@ jobs:
               if (-not (Test-Path -LiteralPath $path)) {
                 Get-ChildItem -LiteralPath $installDir | Select-Object Name, Length | Format-Table | Out-String | Write-Host
                 throw "Missing installed artifact: $path"
+              }
+            }
+            $installedDllPatterns = @(
+              "libicu*.dll",
+              "libssl*.dll",
+              "libcrypto*.dll",
+              "libxml2*.dll",
+              "zlib*.dll"
+            )
+            foreach ($pattern in $installedDllPatterns) {
+              $matches = Get-ChildItem -LiteralPath (Join-Path $installDir "pg/bin") -Filter $pattern -ErrorAction SilentlyContinue
+              if (-not $matches) {
+                Get-ChildItem -LiteralPath (Join-Path $installDir "pg/bin") | Select-Object Name, Length | Format-Table | Out-String | Write-Host
+                throw "Missing installed Windows Postgres runtime DLL matching: pg/bin/$pattern"
               }
             }
 
