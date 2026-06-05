@@ -26,6 +26,23 @@ if sys.platform == "win32":
     if policy_cls is not None:
         asyncio.set_event_loop_policy(policy_cls())
 
+
+def _ensure_psycopg_compatible_event_loop() -> None:
+    if sys.platform != "win32":
+        return
+    try:
+        loop = asyncio.get_running_loop()
+    except RuntimeError:
+        return
+    if "Proactor" in type(loop).__name__:
+        raise RuntimeError(
+            "notesci backend is running on Windows ProactorEventLoop, which "
+            "psycopg cannot use for async connections. Launch the backend via "
+            "`python -m notesci.serve` so the selector event-loop policy is "
+            "installed before uvicorn starts."
+        )
+
+
 import psycopg
 
 from fastapi import Depends, FastAPI, File, Form, Header, HTTPException, Request, UploadFile
@@ -181,6 +198,7 @@ from .sweeper import sweep_loop
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    _ensure_psycopg_compatible_event_loop()
     await init_pool()
     async with get_conn() as conn:
         applied = await apply_migrations(conn)

@@ -11,7 +11,6 @@ from __future__ import annotations
 import argparse
 import asyncio
 import os
-import selectors
 import sys
 
 
@@ -23,13 +22,35 @@ def configure_windows_selector_event_loop() -> None:
         asyncio.set_event_loop_policy(policy_cls())
 
 
+# Install the policy at import time as well as in main(). The bundled
+# desktop app calls main(), but import-time configuration protects helper
+# invocations and keeps Windows behavior deterministic before uvicorn has
+# a chance to create its server loop.
+configure_windows_selector_event_loop()
+
+
 def _windows_selector_loop_factory() -> asyncio.AbstractEventLoop:
-    loop = asyncio.SelectorEventLoop(selectors.SelectSelector())
+    configure_windows_selector_event_loop()
+    loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
     return loop
 
 
+def _assert_psycopg_compatible_event_loop() -> asyncio.AbstractEventLoop:
+    loop = asyncio.get_running_loop()
+    if sys.platform == "win32" and "Proactor" in type(loop).__name__:
+        raise RuntimeError(
+            "incompatible Windows event loop: "
+            f"{type(loop).__name__}. notesci must run the backend through "
+            "`python -m notesci.serve` so psycopg uses a selector event loop."
+        )
+    return loop
+
+
 async def _run_uvicorn(host: str, port: int) -> None:
+    loop = _assert_psycopg_compatible_event_loop()
+    print(f"notesci backend event loop: {type(loop).__name__}", file=sys.stderr, flush=True)
+
     import uvicorn
 
     config = uvicorn.Config(
@@ -44,9 +65,7 @@ async def _run_uvicorn(host: str, port: int) -> None:
 
 
 async def _check_event_loop() -> None:
-    loop = asyncio.get_running_loop()
-    if sys.platform == "win32" and "Proactor" in type(loop).__name__:
-        raise RuntimeError(f"incompatible Windows event loop: {type(loop).__name__}")
+    loop = _assert_psycopg_compatible_event_loop()
     print(f"event loop OK: {type(loop).__name__}")
 
 

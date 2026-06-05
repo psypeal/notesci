@@ -363,6 +363,10 @@ jobs:
             if ($LASTEXITCODE -ne 0) {
               throw "installed bundled Python backend import failed with exit code $LASTEXITCODE"
             }
+            & (Join-Path $installDir "python/python.exe") -c "import asyncio; import notesci.main; policy = type(asyncio.get_event_loop_policy()).__name__; print('event-loop policy', policy); assert 'WindowsSelector' in policy"
+            if ($LASTEXITCODE -ne 0) {
+              throw "installed bundled Python backend did not install Windows selector event-loop policy"
+            }
             & (Join-Path $installDir "python/python.exe") -m notesci.serve --help | Out-Null
             if ($LASTEXITCODE -ne 0) {
               throw "installed bundled Python backend launcher failed with exit code $LASTEXITCODE"

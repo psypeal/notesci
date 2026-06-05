@@ -266,7 +266,7 @@ def bootstrap() -> dict[str, str]:
     # Mode 0o700: same protection as ~/.ssh/. Skill briefs aren't
     # sensitive on their own but MCP recipes name secrets, and the
     # config root may grow more sensitive content over time.
-    for d in (CONFIG_ROOT, SKILLS_DIR, MCPS_DIR):
+    for d in (CONFIG_ROOT, SKILLS_DIR, MCPS_DIR, PLUGINS_DIR):
         try:
             d.mkdir(parents=True, exist_ok=True, mode=0o700)
             # mkdir(mode=...) only sets perms on creation — chmod
