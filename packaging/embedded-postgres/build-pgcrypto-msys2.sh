@@ -48,6 +48,10 @@ log "extracting PostgreSQL source"
 mkdir -p "$SRC"
 tar -xjf "$ARCHIVE" --strip-components=1 -C "$SRC"
 
+if [[ ! -f "$SRC/contrib/pgcrypto/win32ver.rc" && -f "$SRC/src/port/win32ver.rc" ]]; then
+    cp "$SRC/src/port/win32ver.rc" "$SRC/contrib/pgcrypto/win32ver.rc"
+fi
+
 log "building contrib/pgcrypto against $PG_CONFIG"
 (
     cd "$SRC/contrib/pgcrypto"
