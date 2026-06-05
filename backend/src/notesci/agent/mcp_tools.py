@@ -499,15 +499,202 @@ def _zotero_bool(value: object, *, default: bool = True) -> bool:
     return bool(value)
 
 
+def _zotero_positive_int(value: object, *, default: int, minimum: int = 1, maximum: int = 100) -> int:
+    try:
+        parsed = int(str(value).strip())
+    except Exception:
+        parsed = default
+    return max(minimum, min(maximum, parsed))
+
+
 def _zotero_collection_items_empty(result: object) -> bool:
+    if result is None:
+        return True
+    text_blocks = _zotero_text_block_payload(result)
+    if text_blocks is not None:
+        return _zotero_collection_items_empty(text_blocks)
+    if isinstance(result, (list, tuple, set, frozenset)):
+        if len(result) == 0:
+            return True
+        if all(isinstance(item, str) for item in result):
+            return _zotero_collection_items_empty("\n\n".join(result))
+        return False
+    if isinstance(result, dict):
+        if not result:
+            return True
+        for key in ("items", "results", "data", "entries"):
+            value = result.get(key)
+            if isinstance(value, (list, tuple, set, frozenset)):
+                if len(value) == 0:
+                    return True
+                value_text_blocks = _zotero_text_block_payload(list(value))
+                if value_text_blocks is not None:
+                    return _zotero_collection_items_empty(value_text_blocks)
+                if all(isinstance(item, str) for item in value):
+                    return _zotero_collection_items_empty("\n\n".join(value))
+        for key in ("total", "count", "num_items"):
+            if key not in result:
+                continue
+            total = result.get(key)
+            if total == 0 or total == "0":
+                return True
     text = _normalize_zotero_collection_name(str(result or ""))
     if not text:
         return True
     return (
-        "no items found in collection" in text
+        text in {"[]", "{}", "no items", "0 items"}
+        or "no items found in collection" in text
+        or "no items in collection" in text
         or "no items found" == text
         or text.startswith("no items found ")
+        or text.startswith("0 items ")
+        or " 0 items" in text
     )
+
+
+def _zotero_text_block_payload(result: object) -> str | None:
+    blocks: list[object] | None = None
+    if isinstance(result, list):
+        blocks = result
+    elif isinstance(result, dict):
+        for key in ("content", "blocks"):
+            value = result.get(key)
+            if isinstance(value, list):
+                blocks = value
+                break
+    if not blocks:
+        return None
+
+    texts: list[str] = []
+    for block in blocks:
+        if not isinstance(block, dict):
+            return None
+        block_type = str(block.get("type") or "").casefold()
+        if block_type not in {"text", "markdown", ""}:
+            return None
+        text = block.get("text") or block.get("content")
+        if text not in (None, ""):
+            texts.append(str(text))
+    if not texts:
+        return None
+    return "\n\n".join(texts)
+
+
+def _zotero_structured_items(result: object) -> list[object] | None:
+    if isinstance(result, list):
+        return result
+    if isinstance(result, dict):
+        for key in ("items", "results", "data", "entries"):
+            value = result.get(key)
+            if isinstance(value, list):
+                return value
+        nested = result.get("data")
+        if isinstance(nested, dict):
+            for key in ("title", "itemType", "DOI", "url", "key"):
+                if key in nested:
+                    return [result]
+        for key in ("title", "itemType", "DOI", "url", "key"):
+            if key in result:
+                return [result]
+    return None
+
+
+def _zotero_item_value(item: object, *keys: str) -> object:
+    if not isinstance(item, dict):
+        return None
+    sources: list[dict[str, Any]] = [item]
+    nested = item.get("data")
+    if isinstance(nested, dict):
+        sources.append(nested)
+    for source in sources:
+        for key in keys:
+            value = source.get(key)
+            if value not in (None, ""):
+                return value
+    return None
+
+
+def _zotero_creator_names(creators: object) -> str:
+    if not isinstance(creators, list):
+        return ""
+    names: list[str] = []
+    for creator in creators[:4]:
+        if not isinstance(creator, dict):
+            continue
+        name = creator.get("name")
+        if not name:
+            first = str(creator.get("firstName") or "").strip()
+            last = str(creator.get("lastName") or "").strip()
+            name = " ".join(part for part in (first, last) if part)
+        if name:
+            names.append(str(name))
+    if len(creators) > 4:
+        names.append("et al.")
+    return ", ".join(names)
+
+
+def _zotero_item_summary(item: object, index: int) -> str:
+    if not isinstance(item, dict):
+        text = str(item).strip() or "Untitled Zotero item"
+        return f"## {index}. {text}"
+
+    title = _zotero_item_value(item, "title", "shortTitle") or "Untitled Zotero item"
+    item_type = _zotero_item_value(item, "itemType", "type")
+    date = _zotero_item_value(item, "date", "year", "publicationYear")
+    key = _zotero_item_value(item, "key", "itemKey")
+    doi = _zotero_item_value(item, "DOI", "doi")
+    url = _zotero_item_value(item, "url", "URL")
+    creators = _zotero_creator_names(_zotero_item_value(item, "creators"))
+
+    lines = [f"## {index}. {title}"]
+    meta = []
+    if creators:
+        meta.append(str(creators))
+    if date:
+        meta.append(str(date))
+    if item_type:
+        meta.append(str(item_type))
+    if meta:
+        lines.append(f"- Metadata: {'; '.join(meta)}")
+    if doi:
+        lines.append(f"- DOI: {doi}")
+    if url:
+        lines.append(f"- URL: {url}")
+    if key:
+        lines.append(f"- Zotero key: {key}")
+    return "\n".join(lines)
+
+
+def _zotero_json_dump(result: object, *, max_chars: int = 24000) -> str:
+    try:
+        raw = json.dumps(result, ensure_ascii=False, indent=2, default=str)
+    except Exception:
+        raw = str(result)
+    if len(raw) <= max_chars:
+        return raw
+    return (
+        raw[:max_chars]
+        + f"\n... raw Zotero payload truncated by Notesci; {len(raw) - max_chars} characters omitted."
+    )
+
+
+def _zotero_format_tool_result(result: object) -> str:
+    if isinstance(result, str):
+        return result
+    text_blocks = _zotero_text_block_payload(result)
+    if text_blocks is not None:
+        return text_blocks
+    items = _zotero_structured_items(result)
+    if items:
+        summaries = "\n\n".join(
+            _zotero_item_summary(item, idx)
+            for idx, item in enumerate(items[:50], start=1)
+        )
+        if len(items) > 50:
+            summaries += f"\n\n... {len(items) - 50} more Zotero items omitted from summary."
+        raw = _zotero_json_dump(result)
+        return f"{summaries}\n\n```json\n{raw}\n```"
+    return _zotero_json_dump(result)
 
 
 async def _resolve_zotero_collection_key(
@@ -601,17 +788,24 @@ def _wrap_zotero_collection_items_tool(
         collection_key: str = "",
         collection_name: str | None = None,
         collection: str | None = None,
+        key: str | None = None,
+        collection_id: str | None = None,
+        collectionId: str | None = None,
         name: str | None = None,
         title: str | None = None,
         query: str | None = None,
         detail: str = "summary",
         limit: int | str | None = 50,
         include_subcollections: bool | str = True,
+        max_child_collections: int | str | None = 25,
     ) -> str:
         collection_ref = (
             collection_key
             or collection_name
             or collection
+            or key
+            or collection_id
+            or collectionId
             or name
             or title
             or query
@@ -640,7 +834,7 @@ def _wrap_zotero_collection_items_tool(
             or not _zotero_bool(include_subcollections)
             or collections_tool is None
         ):
-            return result
+            return _zotero_format_tool_result(result)
 
         collection_payload: dict[str, Any] = {}
         if "limit" in _tool_arg_names(collections_tool):
@@ -653,10 +847,17 @@ def _wrap_zotero_collection_items_tool(
 
         descendants = _zotero_descendant_collections(collection_tree, resolved_key)
         if not descendants:
-            return result
+            return _zotero_format_tool_result(result)
+        child_scan_limit = _zotero_positive_int(
+            max_child_collections,
+            default=25,
+            minimum=1,
+            maximum=100,
+        )
+        scanned_descendants = descendants[:child_scan_limit]
 
         child_outputs: list[str] = []
-        for child_name, child_key in descendants:
+        for child_name, child_key in scanned_descendants:
             child_payload: dict[str, Any] = {key_arg: child_key}
             if "detail" in upstream_args:
                 child_payload["detail"] = detail
@@ -674,14 +875,35 @@ def _wrap_zotero_collection_items_tool(
                 continue
             child_outputs.append(
                 f"## Child collection: {child_name} (Key: {child_key})\n\n"
-                f"{child_result}"
+                f"{_zotero_format_tool_result(child_result)}"
             )
 
         if not child_outputs:
-            return result
+            checked = "\n".join(
+                f"- {child_name} (Key: {child_key})"
+                for child_name, child_key in scanned_descendants
+            )
+            return "\n\n".join(
+                [
+                    _zotero_format_tool_result(result),
+                    "## Child collections checked",
+                    checked,
+                    (
+                        "No direct items were returned from the parent or checked "
+                        "child collections. Ask for a specific child collection key "
+                        "to browse deeper."
+                    ),
+                ]
+            )
+        omitted = len(descendants) - len(scanned_descendants)
+        if omitted > 0:
+            child_outputs.append(
+                f"Skipped {omitted} additional child collections. "
+                "Ask for a specific child collection to browse deeper."
+            )
         return "\n\n".join(
             [
-                str(result),
+                _zotero_format_tool_result(result),
                 "## Items found in child collections",
                 *child_outputs,
             ]
@@ -692,11 +914,16 @@ def _wrap_zotero_collection_items_tool(
         "Notesci accepts either the 8-character Zotero collection key or a "
         "human-readable collection name. Prefer collection_key when the key "
         "is known; otherwise pass the visible collection name as "
-        "collection_name, collection, query, name, or title. Notesci resolves "
-        "names before fetching items. If multiple collections match the name, "
+        "collection_name, collection, query, name, or title. collection_key, "
+        "key, collection_id, and collectionId are accepted key aliases. "
+        "Notesci resolves names before fetching items. If multiple collections match the name, "
         "copy one of the returned keys and retry with the exact 8-character "
         "collection_key. Parent collections are expanded to child collections "
-        "when the parent has no direct items."
+        "when the parent has no direct items. Set include_subcollections=false "
+        "to disable parent expansion. Set max_child_collections to bound scans "
+        "in large Zotero libraries. Structured Zotero item payloads are "
+        "summarized before raw JSON so titles, creators, dates, DOI, URLs, "
+        "and Zotero keys are visible to the model."
     ).strip()
     return StructuredTool.from_function(
         coroutine=zotero_get_collection_items,

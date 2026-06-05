@@ -30,6 +30,7 @@ from notesci.agent.mcp_tools import (
     _tool_arg_names,
     _wrap_zotero_collection_items_tool,
     _zotero_descendant_collections,
+    _zotero_collection_items_empty,
     _zotero_collection_matches_for_name,
     _zotero_collection_search_matches_for_name,
 )
@@ -641,6 +642,265 @@ async def test_zotero_collection_items_wrapper_expands_empty_parent_collection()
     ]
 
 
+@pytest.mark.parametrize(
+    "payload",
+    [
+        [],
+        {},
+        {"items": []},
+        {"results": []},
+        {"data": []},
+        {"total": 0},
+        "[]",
+        "0 items",
+        "0 items in collection: Parent",
+        "No items in collection: Parent",
+        ["No items found"],
+        {"items": ["No items found"]},
+        {"items": [{"type": "text", "text": "No items found"}]},
+    ],
+)
+def test_zotero_collection_items_empty_accepts_structured_empty_shapes(payload):
+    assert _zotero_collection_items_empty(payload)
+
+
+def test_zotero_collection_items_empty_keeps_simple_item_lists_visible():
+    assert not _zotero_collection_items_empty(["Example paper"])
+
+
+async def test_zotero_collection_items_wrapper_formats_structured_items():
+    upstream = _FakeMcpTool(
+        {"items": [{"title": "Example paper", "year": 2024}]},
+        args={"collection_key": {}, "limit": {}},
+        name="zotero__zotero_get_collection_items",
+    )
+    wrapped = _wrap_zotero_collection_items_tool(
+        upstream,
+        search_tool=None,
+        collections_tool=None,
+    )
+
+    result = await wrapped.ainvoke({"collection_key": "ABCD1234"})
+
+    assert "## 1. Example paper" in result
+    assert "- Metadata: 2024" in result
+    assert '"items"' in result
+    assert '"title": "Example paper"' in result
+    assert '"year": 2024' in result
+
+
+async def test_zotero_collection_items_wrapper_formats_simple_list_items():
+    upstream = _FakeMcpTool(
+        ["Example paper", "Second paper"],
+        args={"collection_key": {}, "limit": {}},
+        name="zotero__zotero_get_collection_items",
+    )
+    wrapped = _wrap_zotero_collection_items_tool(
+        upstream,
+        search_tool=None,
+        collections_tool=None,
+    )
+
+    result = await wrapped.ainvoke({"collection_key": "ABCD1234"})
+
+    assert "## 1. Example paper" in result
+    assert "## 2. Second paper" in result
+
+
+async def test_zotero_collection_items_wrapper_truncates_large_raw_payloads():
+    upstream = _FakeMcpTool(
+        {"items": [{"title": "Large item", "abstractNote": "x" * 30000}]},
+        args={"collection_key": {}, "limit": {}},
+        name="zotero__zotero_get_collection_items",
+    )
+    wrapped = _wrap_zotero_collection_items_tool(
+        upstream,
+        search_tool=None,
+        collections_tool=None,
+    )
+
+    result = await wrapped.ainvoke({"collection_key": "ABCD1234"})
+
+    assert "## 1. Large item" in result
+    assert "raw Zotero payload truncated by Notesci" in result
+
+
+async def test_zotero_collection_items_wrapper_unwraps_text_blocks():
+    upstream = _FakeMcpTool(
+        [{"type": "text", "text": "# Items\n\n## 1. Example paper"}],
+        args={"collection_key": {}, "limit": {}},
+        name="zotero__zotero_get_collection_items",
+    )
+    wrapped = _wrap_zotero_collection_items_tool(
+        upstream,
+        search_tool=None,
+        collections_tool=None,
+    )
+
+    result = await wrapped.ainvoke({"collection_key": "ABCD1234"})
+
+    assert result == "# Items\n\n## 1. Example paper"
+
+
+async def test_zotero_collection_items_wrapper_expands_empty_text_block_parent():
+    upstream = _FakeMcpTool(
+        [{"type": "text", "text": "No items found in collection: Parent"}],
+        args={"collection_key": {}, "limit": {}},
+        name="zotero__zotero_get_collection_items",
+    )
+    collections = _FakeMcpTool(
+        """
+# Zotero Collections
+
+- Parent (Key: ABCD1234)
+  - Brain Aging (Key: EFGH5678)
+""",
+        args={"limit": {}},
+        name="zotero__zotero_get_collections",
+    )
+
+    async def ainvoke(payload: dict):
+        upstream.calls.append(payload)
+        if payload["collection_key"] == "ABCD1234":
+            return [{"type": "text", "text": "No items found in collection: Parent"}]
+        return [{"type": "text", "text": "# Items\n\n## 1. Example paper"}]
+
+    upstream.ainvoke = ainvoke
+    wrapped = _wrap_zotero_collection_items_tool(
+        upstream,
+        search_tool=None,
+        collections_tool=collections,
+    )
+
+    result = await wrapped.ainvoke({"collection_name": "Parent"})
+
+    assert "Items found in child collections" in result
+    assert "Example paper" in result
+    assert upstream.calls == [
+        {"collection_key": "ABCD1234", "limit": 50},
+        {"collection_key": "EFGH5678", "limit": 50},
+    ]
+
+
+async def test_zotero_collection_items_wrapper_expands_structured_empty_parent_collection():
+    upstream = _FakeMcpTool(
+        [],
+        args={"collection_key": {}, "limit": {}},
+        name="zotero__zotero_get_collection_items",
+    )
+    collections = _FakeMcpTool(
+        """
+# Zotero Collections
+
+- Parent (Key: ABCD1234)
+  - Brain Aging (Key: EFGH5678)
+""",
+        args={"limit": {}},
+        name="zotero__zotero_get_collections",
+    )
+
+    async def ainvoke(payload: dict):
+        upstream.calls.append(payload)
+        if payload["collection_key"] == "ABCD1234":
+            return []
+        return {"items": [{"title": "Example paper"}]}
+
+    upstream.ainvoke = ainvoke
+    wrapped = _wrap_zotero_collection_items_tool(
+        upstream,
+        search_tool=None,
+        collections_tool=collections,
+    )
+
+    result = await wrapped.ainvoke({"collection_name": "Parent"})
+
+    assert "Items found in child collections" in result
+    assert "Example paper" in result
+    assert upstream.calls == [
+        {"collection_key": "ABCD1234", "limit": 50},
+        {"collection_key": "EFGH5678", "limit": 50},
+    ]
+
+
+async def test_zotero_collection_items_wrapper_bounds_child_collection_scan():
+    upstream = _FakeMcpTool(
+        [],
+        args={"collection_key": {}, "limit": {}},
+        name="zotero__zotero_get_collection_items",
+    )
+    collections = _FakeMcpTool(
+        """
+# Zotero Collections
+
+- Parent (Key: ABCD1234)
+  - Child One (Key: EFGH5678)
+  - Child Two (Key: IJKL9012)
+  - Child Three (Key: MNOP3456)
+""",
+        args={"limit": {}},
+        name="zotero__zotero_get_collections",
+    )
+
+    async def ainvoke(payload: dict):
+        upstream.calls.append(payload)
+        if payload["collection_key"] == "ABCD1234":
+            return []
+        return {"items": [{"title": f"Paper from {payload['collection_key']}"}]}
+
+    upstream.ainvoke = ainvoke
+    wrapped = _wrap_zotero_collection_items_tool(
+        upstream,
+        search_tool=None,
+        collections_tool=collections,
+    )
+
+    result = await wrapped.ainvoke(
+        {"collection_name": "Parent", "max_child_collections": 1}
+    )
+
+    assert "Paper from EFGH5678" in result
+    assert "Skipped 2 additional child collections" in result
+    assert upstream.calls == [
+        {"collection_key": "ABCD1234", "limit": 50},
+        {"collection_key": "EFGH5678", "limit": 50},
+    ]
+
+
+async def test_zotero_collection_items_wrapper_lists_checked_children_when_no_items():
+    upstream = _FakeMcpTool(
+        [],
+        args={"collection_key": {}, "limit": {}},
+        name="zotero__zotero_get_collection_items",
+    )
+    collections = _FakeMcpTool(
+        """
+# Zotero Collections
+
+- Parent (Key: ABCD1234)
+  - Empty Child (Key: EFGH5678)
+""",
+        args={"limit": {}},
+        name="zotero__zotero_get_collections",
+    )
+
+    async def ainvoke(payload: dict):
+        upstream.calls.append(payload)
+        return []
+
+    upstream.ainvoke = ainvoke
+    wrapped = _wrap_zotero_collection_items_tool(
+        upstream,
+        search_tool=None,
+        collections_tool=collections,
+    )
+
+    result = await wrapped.ainvoke({"collection_name": "Parent"})
+
+    assert "Child collections checked" in result
+    assert "Empty Child (Key: EFGH5678)" in result
+    assert "Ask for a specific child collection key" in result
+
+
 async def test_zotero_collection_items_wrapper_rejects_ambiguous_name_before_fetch():
     upstream = _FakeMcpTool(
         "items",
@@ -687,3 +947,22 @@ async def test_zotero_collection_items_wrapper_rejects_missing_collection_ref():
 
     assert "No collection name or key was provided" in result
     assert upstream.calls == []
+
+
+async def test_zotero_collection_items_wrapper_accepts_key_aliases():
+    for alias in ("key", "collection_id", "collectionId"):
+        upstream = _FakeMcpTool(
+            [{"title": "Alias routed paper", "key": "ITEM123"}],
+            args={"collection_key": {}},
+            name="zotero__zotero_get_collection_items",
+        )
+        wrapped = _wrap_zotero_collection_items_tool(
+            upstream,
+            search_tool=None,
+            collections_tool=None,
+        )
+
+        result = await wrapped.ainvoke({alias: "ABCD1234"})
+
+        assert "Alias routed paper" in result
+        assert upstream.calls == [{"collection_key": "ABCD1234"}]
