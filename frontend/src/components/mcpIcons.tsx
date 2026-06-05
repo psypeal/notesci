@@ -165,6 +165,34 @@ const CUSTOM_GLYPHS: Record<string, (p?: IconProps) => ReactElement> = {
       />
     </Mark>
   ),
+  // Flame — web extraction/crawling.
+  firecrawl: (p) => (
+    <Mark {...p}>
+      <path
+        fillRule="evenodd"
+        d="M13.8 2.2c.5 2.8 2.6 4.2 4.2 6.1 1.2 1.5 2 3.1 2 5.5A8 8 0 0 1 4 13.8c0-2.9 1.5-5.3 3.4-7.1.1 2.1.9 3.5 2.1 4.3.3-3.5 2.1-6.4 4.3-8.8ZM12 20a4.1 4.1 0 0 0 4.1-4.2c0-1.2-.4-2.1-1.2-3.1-.6-.8-1.5-1.5-2-2.8-.9 1.3-1.6 2.7-1.7 4.5-1-.4-1.7-1.1-2.2-2.1-.7 1-1.1 2.1-1.1 3.5A4.1 4.1 0 0 0 12 20Z"
+      />
+    </Mark>
+  ),
+  // Compass — directed search over the web.
+  tavily: (p) => (
+    <Mark {...p}>
+      <path
+        fillRule="evenodd"
+        d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20Zm0 2.2a7.8 7.8 0 1 1 0 15.6 7.8 7.8 0 0 1 0-15.6Zm4.6 3.2-2.3 6.9-6.9 2.3 2.3-6.9 6.9-2.3Zm-4.6 3.2a1.4 1.4 0 1 0 0 2.8 1.4 1.4 0 0 0 0-2.8Z"
+      />
+    </Mark>
+  ),
+  // Sparked lens — neural/semantic search.
+  exa: (p) => (
+    <Mark {...p}>
+      <path d="m18.6 3.2.7 2.1 2.1.7-2.1.7-.7 2.1-.7-2.1-2.1-.7 2.1-.7.7-2.1ZM7.2 4.4l.9 2.7 2.7.9-2.7.9-.9 2.7-.9-2.7-2.7-.9 2.7-.9.9-2.7Z" />
+      <path
+        fillRule="evenodd"
+        d="M11.2 9a6.2 6.2 0 0 1 4.9 10l3.1 3.1-1.4 1.4-3.1-3.1A6.2 6.2 0 1 1 11.2 9Zm0 2.2a4 4 0 1 0 0 8.1 4 4 0 0 0 0-8.1Z"
+      />
+    </Mark>
+  ),
   // Fallback — a connector plug (the MCP idea: a pluggable tool).
   _fallback: (p) => (
     <Mark {...p}>

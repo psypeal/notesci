@@ -131,6 +131,7 @@ export function GeneralPage() {
   const [messages, setMessages] = useState<Msg[]>([])
   const [historyLoading, setHistoryLoading] = useState(false)
   const [sending, setSending] = useState(false)
+  const firstSendSessionRef = useRef<string | null>(null)
   // Left-rail session list. ``sidebarOpen`` persists so the user's
   // last collapse-state is honoured across reloads.
   const SIDEBAR_KEY = 'notesci_general_sidebar_open'
@@ -270,6 +271,9 @@ export function GeneralPage() {
             content: m.content,
             turn_seq: m.turn_seq,
           }))
+        if (firstSendSessionRef.current === sessionId && restored.length === 0) {
+          return
+        }
         setMessages(restored)
       } catch (e) {
         const err = e as ApiError | undefined
@@ -349,6 +353,7 @@ export function GeneralPage() {
             body: JSON.stringify({}),
           })
           activeSid = sess.id
+          firstSendSessionRef.current = sess.id
           setSessionId(sess.id)
           const next = new URLSearchParams(searchParams)
           next.set('s', sess.id)
@@ -412,6 +417,9 @@ export function GeneralPage() {
             )
           }
         })
+        if (firstSendSessionRef.current === activeSid) {
+          firstSendSessionRef.current = null
+        }
         // Attachment was successfully consumed by this turn — clear so
         // the next message doesn't accidentally re-send it.
         if (queued) setAttachment(null)
@@ -422,7 +430,13 @@ export function GeneralPage() {
       } catch (e) {
         const err = e as ApiError | undefined
         if (err?.code === 'aborted' || err?.name === 'AbortError') {
+          if (firstSendSessionRef.current === activeSid) {
+            firstSendSessionRef.current = null
+          }
           return
+        }
+        if (firstSendSessionRef.current === activeSid) {
+          firstSendSessionRef.current = null
         }
         // Roll back the optimistic user bubble on failure so the user
         // isn't looking at their unanswered words next to a toast.
@@ -617,16 +631,6 @@ export function GeneralPage() {
 
           <button
             type="button"
-            className="ns-btn"
-            onClick={() => setNewProjectOpen(true)}
-            aria-label="Create a new project"
-            style={{ gap: 7 }}
-          >
-            <span aria-hidden="true" style={{ fontSize: 17, lineHeight: 1 }}>+</span>
-            New project
-          </button>
-          <button
-            type="button"
             onClick={() => {
               setProjectMenuOpen((v) => !v)
               setAvatarMenuOpen(false)
@@ -653,6 +657,10 @@ export function GeneralPage() {
               onPick={(id) => {
                 setProjectMenuOpen(false)
                 navigate(`/p/${id}`)
+              }}
+              onCreate={() => {
+                setProjectMenuOpen(false)
+                setNewProjectOpen(true)
               }}
               onClose={() => setProjectMenuOpen(false)}
             />
@@ -1853,10 +1861,12 @@ function Composer({
 function ProjectMenu({
   projects,
   onPick,
+  onCreate,
   onClose,
 }: {
   projects: ProjectOut[]
   onPick: (id: string) => void
+  onCreate: () => void
   onClose: () => void
 }) {
   return (
@@ -1891,6 +1901,29 @@ function ProjectMenu({
       >
         YOUR PROJECTS
       </div>
+      <button
+        type="button"
+        role="menuitem"
+        onClick={onCreate}
+        style={{
+          display: 'flex',
+          width: '100%',
+          alignItems: 'center',
+          gap: 8,
+          textAlign: 'left',
+          padding: '9px 10px',
+          border: '1px solid color-mix(in oklch, var(--color-indigo) 18%, var(--color-rule))',
+          background: 'color-mix(in oklch, var(--color-indigo) 8%, var(--color-paper))',
+          fontSize: 13,
+          color: 'var(--color-ink)',
+          borderRadius: 8,
+          cursor: 'pointer',
+          marginBottom: 6,
+        }}
+      >
+        <span aria-hidden="true" style={{ fontSize: 16, lineHeight: 1 }}>+</span>
+        New project
+      </button>
       {projects.length === 0 ? (
         <div style={{ padding: '8px 10px', fontSize: 13, color: 'var(--color-muted)' }}>
           No projects yet.

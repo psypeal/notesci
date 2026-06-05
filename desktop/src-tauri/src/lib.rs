@@ -405,6 +405,11 @@ fn start_backend_blocking(
     mut env_overrides: HashMap<String, String>,
     startup_timeout: Duration,
 ) -> Result<(), String> {
+    set_startup_status_on_main(
+        &app,
+        "Checking local database",
+        "Existing data is reused. Only a fresh install initializes the bundled database.",
+    );
     let pg_mode = pg::detect(&resource_dir, &user_data_dir);
     info!("pg mode: {:?}", pg_mode);
     {
@@ -426,6 +431,12 @@ fn start_backend_blocking(
         },
     }
 
+    set_startup_status_on_main(
+        &app,
+        "Starting local backend",
+        "Loading workspace APIs, model settings, citations, and MCP connectors.",
+    );
+
     // Backend lifecycle. We hide-to-tray on non-Windows window close, so a
     // previous launch may have left the backend running. Probe the port first
     // and only spawn when nothing is listening; otherwise reuse the process and
@@ -438,8 +449,18 @@ fn start_backend_blocking(
     )
     .is_ok();
     if already_up {
+        set_startup_status_on_main(
+            &app,
+            "Reconnecting to notesci",
+            "The local backend is already running; checking readiness.",
+        );
         wait_for_backend(BACKEND_HOST, BACKEND_PORT, startup_timeout)?;
         info!("backend already running at {}:{} and ready", BACKEND_HOST, BACKEND_PORT);
+        set_startup_status_on_main(
+            &app,
+            "Opening notesci",
+            "The interface is connecting to the ready local backend.",
+        );
         return Ok(());
     }
 
@@ -466,6 +487,11 @@ fn start_backend_blocking(
     }
 
     info!("backend ready");
+    set_startup_status_on_main(
+        &app,
+        "Opening notesci",
+        "The interface is connecting to the ready local backend.",
+    );
     Ok(())
 }
 
@@ -644,6 +670,28 @@ fn read_log_tail(path: &Path, max_bytes: usize) -> std::io::Result<String> {
     Ok(String::from_utf8_lossy(&buf).into_owned())
 }
 
+fn set_startup_status_on_main(app: &tauri::AppHandle, title: &str, detail: &str) {
+    let app_for_main = app.clone();
+    let title = title.to_string();
+    let detail = detail.to_string();
+    let script = match (
+        serde_json::to_string(&title),
+        serde_json::to_string(&detail),
+    ) {
+        (Ok(title_json), Ok(detail_json)) => {
+            format!(
+                "window.notesciSetStartupStatus && window.notesciSetStartupStatus({title_json},{detail_json});"
+            )
+        }
+        _ => return,
+    };
+    let _ = app.run_on_main_thread(move || {
+        if let Some(win) = app_for_main.get_webview_window("main") {
+            let _ = win.eval(&script);
+        }
+    });
+}
+
 fn navigate_main_to_backend_on_main(app: tauri::AppHandle) {
     let app_for_main = app.clone();
     if let Err(err) = app.run_on_main_thread(move || {
@@ -689,22 +737,20 @@ fn show_startup_error_on_main(app: tauri::AppHandle, reason: String) {
 fn show_startup_loading_page(win: &tauri::WebviewWindow) -> Result<(), String> {
     win.navigate("about:blank".parse().map_err(|e| format!("invalid about:blank url: {e}"))?)
         .map_err(|e| format!("failed to navigate to startup loading page: {e}"))?;
-    let loading_page = "<!doctype html><html><head><meta charset=\"utf-8\"/>\
-<title>Starting notesci</title><style>\
-:root{color-scheme:light;}*{box-sizing:border-box;}body{margin:0;min-height:100vh;\
-display:grid;place-items:center;background:radial-gradient(circle at 20% 20%,#eef7ef 0,#eef7ef 22%,transparent 48%),\
-linear-gradient(135deg,#f7f1df 0%,#edf3e8 48%,#e7eff5 100%);font-family:Georgia,'Times New Roman',serif;color:#1f2a24;}\
-.card{width:min(520px,calc(100vw - 40px));padding:34px 36px;border:1px solid rgba(54,68,55,.16);\
-border-radius:24px;background:rgba(255,255,255,.72);box-shadow:0 24px 80px rgba(37,52,42,.16);backdrop-filter:blur(18px);}\
-.mark{width:42px;height:42px;border-radius:15px;background:#263b2d;margin-bottom:20px;position:relative;}\
-.mark:after{content:'';position:absolute;inset:10px;border:2px solid #f7e5a2;border-left-color:transparent;border-radius:999px;animation:spin 1s linear infinite;}\
-h1{margin:0 0 10px;font-size:28px;letter-spacing:-.02em;}p{margin:0;color:#536159;font:15px/1.6 system-ui,-apple-system,sans-serif;}\
-.bar{height:6px;margin-top:24px;overflow:hidden;border-radius:999px;background:rgba(38,59,45,.12);}\
-.bar:before{content:'';display:block;width:42%;height:100%;border-radius:inherit;background:#263b2d;animation:load 1.35s ease-in-out infinite;}\
-@keyframes spin{to{transform:rotate(360deg);}}@keyframes load{0%{transform:translateX(-110%);}100%{transform:translateX(250%);}}\
-</style></head><body><main class=\"card\"><div class=\"mark\"></div><h1>Starting notesci</h1>\
-<p>Preparing the local research workspace. First launch may initialize the bundled database; the app will open automatically when ready.</p>\
-<div class=\"bar\"></div></main></body></html>";
+    let loading_page = r#"<!doctype html><html><head><meta charset="utf-8"/>
+<title>Starting notesci</title><style>
+:root{color-scheme:light;}*{box-sizing:border-box;-webkit-app-region:no-drag!important;}html,body{margin:0;width:100%;height:100%;overflow:hidden;overscroll-behavior:none;}body{display:grid;place-items:center;background:radial-gradient(circle at 18% 18%,#e9f6eb 0,#e9f6eb 20%,transparent 46%),radial-gradient(circle at 88% 4%,#e8edf8 0,#e8edf8 18%,transparent 44%),linear-gradient(135deg,#f7f1df 0%,#edf3e8 48%,#e7eff5 100%);font-family:Georgia,'Times New Roman',serif;color:#1f2a24;}
+.card{width:min(560px,calc(100vw - 42px));padding:34px 36px;border:1px solid rgba(54,68,55,.16);border-radius:26px;background:rgba(255,255,255,.76);box-shadow:0 24px 80px rgba(37,52,42,.16);backdrop-filter:blur(18px);}
+.top{display:flex;align-items:center;gap:16px;margin-bottom:20px;}.mark{width:44px;height:44px;border-radius:16px;background:#263b2d;position:relative;box-shadow:inset 0 0 0 1px rgba(255,255,255,.16);}.mark:after{content:'';position:absolute;inset:10px;border:2px solid #f7e5a2;border-left-color:transparent;border-radius:999px;animation:spin 1s linear infinite;}
+.eyebrow{margin:0 0 4px;font:11px/1.2 ui-monospace,SFMono-Regular,Consolas,monospace;letter-spacing:.12em;text-transform:uppercase;color:#66736a;}h1{margin:0;font-size:28px;letter-spacing:-.02em;}p{margin:8px 0 0;color:#536159;font:15px/1.6 system-ui,-apple-system,sans-serif;}
+.steps{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:24px;}.step{height:6px;border-radius:999px;background:rgba(38,59,45,.12);overflow:hidden;}.step:before{content:'';display:block;width:60%;height:100%;border-radius:inherit;background:#263b2d;animation:load 1.45s ease-in-out infinite;}.step:nth-child(2):before{animation-delay:.18s}.step:nth-child(3):before{animation-delay:.36s}
+.hint{margin-top:14px;color:#6a766e;font:12.5px/1.5 system-ui,-apple-system,sans-serif;}@keyframes spin{to{transform:rotate(360deg);}}@keyframes load{0%{transform:translateX(-110%);}100%{transform:translateX(190%);}}
+</style></head><body><main class="card"><div class="top"><div class="mark"></div><div><div class="eyebrow">Local startup</div><h1 id="startup-title">Starting notesci</h1></div></div>
+<p id="startup-detail">Preparing the local research workspace. First launch initializes the bundled database once; later launches reuse it.</p>
+<div class="steps" aria-hidden="true"><div class="step"></div><div class="step"></div><div class="step"></div></div>
+<div class="hint">Keep this window open. The app will switch to the workspace as soon as the local backend is ready.</div></main>
+<script>window.notesciSetStartupStatus=function(title,detail){var t=document.getElementById('startup-title');var d=document.getElementById('startup-detail');if(t&&title)t.textContent=title;if(d&&detail)d.textContent=detail;};</script>
+</body></html>"#;
     let script = format!(
         "document.open();document.write({});document.close();",
         serde_json::to_string(loading_page).map_err(|e| format!("json encode failed: {e}"))?
@@ -719,7 +765,7 @@ fn show_startup_error_page(win: &tauri::WebviewWindow, reason: &str) -> Result<(
         .map_err(|e| format!("failed to navigate to startup error page: {e}"))?;
     let reason_block = format!(
         "<!doctype html><html><head><meta charset=\"utf-8\"/><title>notesci startup failed</title>\
-<style>body{{font-family:Arial,Helvetica,sans-serif;background:#fff3f0;color:#3c2a24;padding:40px;line-height:1.5;}}\
+<style>*{{box-sizing:border-box;-webkit-app-region:no-drag!important;}}html,body{{margin:0;width:100%;height:100%;overflow:auto;overscroll-behavior:none;}}body{{font-family:Arial,Helvetica,sans-serif;background:#fff3f0;color:#3c2a24;padding:40px;line-height:1.5;}}\
 h1{{margin:0 0 8px;font-size:24px;color:#9a342e;}}code{{word-break:break-word;background:#fff;color:#2d1b17;padding:8px 10px;border:1px solid #f2d5cf;display:block;max-width:100%;}}</style>\
 </head><body><h1>notesci could not start the backend</h1><p>The local backend did not become ready.</p>\
 <button onclick=\"window.location.reload()\" style=\"font-size:14px;padding:10px 16px;border-radius:8px;border:1px solid #c85c45;background:#cf4f3f;color:#fff;cursor:pointer;\">Retry</button>\

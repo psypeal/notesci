@@ -22,8 +22,13 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import importlib.util
 import json
 import logging
+import os
+from pathlib import Path
+import shutil
+import sys
 import time
 from dataclasses import dataclass
 from typing import Any
@@ -103,6 +108,96 @@ async def _evict_if_needed() -> None:
 # ------------------------------------------------------------------------
 
 
+def _windows_extra_path_entries() -> list[str]:
+    """Common per-user launcher locations missing from icon-launched apps.
+
+    Windows desktop apps started from Explorer often inherit a shorter PATH
+    than an interactive terminal. MCP stdio servers commonly depend on
+    launchers such as uvx.exe and npx.cmd in per-user directories, so we
+    explicitly add those well-known locations before resolving commands.
+    """
+    if sys.platform != "win32":
+        return []
+    raw: list[Path] = []
+    exe_dir = Path(sys.executable).resolve().parent
+    raw.extend([exe_dir, exe_dir / "Scripts"])
+    if appdata := os.environ.get("APPDATA"):
+        raw.append(Path(appdata) / "npm")
+    if localappdata := os.environ.get("LOCALAPPDATA"):
+        programs = Path(localappdata) / "Programs" / "Python"
+        if programs.is_dir():
+            raw.extend(path / "Scripts" for path in programs.glob("Python*") if path.is_dir())
+    if userprofile := os.environ.get("USERPROFILE"):
+        home = Path(userprofile)
+        raw.extend([home / ".local" / "bin", home / ".cargo" / "bin"])
+    out: list[str] = []
+    seen: set[str] = set()
+    for path in raw:
+        try:
+            text = str(path)
+        except OSError:
+            continue
+        key = text.lower()
+        if key in seen or not path.is_dir():
+            continue
+        seen.add(key)
+        out.append(text)
+    return out
+
+
+def _stdio_env(config_env: dict | None) -> dict[str, str]:
+    env = {str(k): str(v) for k, v in os.environ.items()}
+    if config_env:
+        env.update({str(k): str(v) for k, v in config_env.items()})
+    if sys.platform == "win32":
+        path_parts = _windows_extra_path_entries()
+        existing = env.get("PATH")
+        if existing:
+            path_parts.extend(existing.split(os.pathsep))
+        seen: set[str] = set()
+        merged: list[str] = []
+        for part in path_parts:
+            part = part.strip()
+            if not part:
+                continue
+            key = part.lower()
+            if key in seen:
+                continue
+            seen.add(key)
+            merged.append(part)
+        if merged:
+            env["PATH"] = os.pathsep.join(merged)
+    return env
+
+
+def _resolve_stdio_command(command: str, args: list[str], env: dict[str, str]) -> tuple[str, list[str]]:
+    command = command.strip()
+    if not command:
+        raise ValueError("stdio transport requires config.command")
+
+    # Explicit paths are respected; bare names are resolved to real .exe/.cmd
+    # paths so Windows CreateProcess does not fail with WinError 2.
+    if "/" in command or "\\" in command:
+        return command, args
+
+    resolved = shutil.which(command, path=env.get("PATH"))
+    if resolved:
+        return resolved, args
+
+    if sys.platform == "win32" and command.lower() == "uvx":
+        resolved_uv = shutil.which("uv", path=env.get("PATH"))
+        if resolved_uv:
+            return resolved_uv, ["tool", "run", *args]
+        if importlib.util.find_spec("uv") is not None:
+            return sys.executable, ["-m", "uv", "tool", "run", *args]
+
+    hint = (
+        "Install uv (for uvx-based MCP servers) or Node.js (for npx-based "
+        "MCP servers), then restart notesci so the desktop app inherits PATH."
+    )
+    raise ValueError(f"stdio command {command!r} was not found. {hint}")
+
+
 def _build_connection(transport: str, config: dict) -> dict[str, Any]:
     """Translate our ``mcp_servers.transport`` + ``config`` jsonb into a
     langchain-mcp-adapters connection dict.
@@ -131,13 +226,15 @@ def _build_connection(transport: str, config: dict) -> dict[str, Any]:
         command = config.get("command")
         if not command:
             raise ValueError("stdio transport requires config.command")
+        args = list(config.get("args") or [])
+        env = _stdio_env(config.get("env") if isinstance(config.get("env"), dict) else None)
+        command, args = _resolve_stdio_command(str(command), args, env)
         out = {
             "transport": "stdio",
             "command": command,
-            "args": list(config.get("args") or []),
+            "args": args,
+            "env": env,
         }
-        if config.get("env"):
-            out["env"] = dict(config["env"])
         if config.get("cwd"):
             out["cwd"] = config["cwd"]
         return out

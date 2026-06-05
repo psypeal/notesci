@@ -4843,11 +4843,33 @@ async def get_system_tools(
     """Report whether the system launchers MCP servers depend on are
     available on PATH. Used by the Sources page to gate stdio-transport
     Connect buttons and show install instructions when missing."""
+    import importlib.util
     import shutil
+
+    def available(name: str) -> bool:
+        path = os.environ.get("PATH", "")
+        if sys.platform == "win32":
+            extras: list[str] = []
+            exe_dir = _Path(sys.executable).resolve().parent
+            extras.extend([str(exe_dir), str(exe_dir / "Scripts")])
+            if appdata := os.environ.get("APPDATA"):
+                extras.append(str(_Path(appdata) / "npm"))
+            if userprofile := os.environ.get("USERPROFILE"):
+                home = _Path(userprofile)
+                extras.extend([str(home / ".local" / "bin"), str(home / ".cargo" / "bin")])
+            path = os.pathsep.join([*extras, path])
+        if shutil.which(name, path=path) is not None:
+            return True
+        if name == "uvx" and shutil.which("uv", path=path) is not None:
+            return True
+        if name == "uvx" and importlib.util.find_spec("uv") is not None:
+            return True
+        return False
+
     return SystemToolsOut(
-        uvx=shutil.which("uvx") is not None,
-        npx=shutil.which("npx") is not None,
-        uv=shutil.which("uv") is not None,
+        uvx=available("uvx"),
+        npx=available("npx"),
+        uv=available("uv"),
     )
 
 

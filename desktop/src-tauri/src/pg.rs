@@ -38,6 +38,7 @@ const PG_DATABASE: &str = "notesci";
 /// future PG major-version upgrade (e.g. 16 → 17) a side-by-side
 /// migration rather than an in-place blow-up.
 const PG_DATA_SUBDIR: &str = "pg-data-16";
+const BOOTSTRAP_MARKER: &str = ".notesci-bootstrap-v1";
 
 /// Embedded PG startup budget — initdb on a clean install is the long
 /// pole (~10s). Subsequent boots are <1s.
@@ -96,7 +97,7 @@ pub fn ensure_started(mode: &Mode) -> Result<Option<String>, String> {
             port,
         } => {
             verify_embedded_pg_tree(pg_root)?;
-            ensure_initdb(pg_root, data_dir)?;
+            let initialized_cluster = ensure_initdb(pg_root, data_dir)?;
             // Refresh the runtime conf every launch — pg_root (and thus
             // dynamic_library_path) changes for AppImage builds whose
             // mount point is per-run.
@@ -106,7 +107,18 @@ pub fn ensure_started(mode: &Mode) -> Result<Option<String>, String> {
             ensure_started_at(pg_root, data_dir, *port)?;
             wait_for_port("127.0.0.1", *port, STARTUP_TIMEOUT)?;
             // First-run setup — creates the notesci role + db if absent.
-            ensure_role_and_db(pg_root, *port)?;
+            // A marker avoids paying the psql bootstrap cost on every
+            // subsequent desktop launch; if the marker is missing from an
+            // older install, the SQL remains idempotent and recreates it.
+            let marker = data_dir.join(BOOTSTRAP_MARKER);
+            if initialized_cluster || !marker.is_file() {
+                ensure_role_and_db(pg_root, *port)?;
+                if let Err(e) = std::fs::write(&marker, b"ok\n") {
+                    warn!("pg: could not write bootstrap marker {}: {e}", marker.display());
+                }
+            } else {
+                info!("pg: notesci role/database bootstrap already complete");
+            }
             let url = format!(
                 "postgresql://{}:{}@127.0.0.1:{}/{}",
                 PG_ROLE,
@@ -268,11 +280,12 @@ fn pg_command(pg_root: &Path, name: &str) -> Command {
 }
 
 /// Run `initdb` if the data dir is empty / absent. Idempotent.
-fn ensure_initdb(pg_root: &Path, data_dir: &Path) -> Result<(), String> {
+/// Returns true only when this call created a fresh cluster.
+fn ensure_initdb(pg_root: &Path, data_dir: &Path) -> Result<bool, String> {
     // `PG_VERSION` is the marker file initdb writes — its presence
     // means the cluster is initialized regardless of empty state.
     if data_dir.join("PG_VERSION").is_file() {
-        return Ok(());
+        return Ok(false);
     }
     info!("pg: initdb at {}", data_dir.display());
     std::fs::create_dir_all(data_dir).map_err(|e| format!("mkdir data dir: {e}"))?;
@@ -303,7 +316,7 @@ fn ensure_initdb(pg_root: &Path, data_dir: &Path) -> Result<(), String> {
             String::from_utf8_lossy(&out.stderr)
         ));
     }
-    Ok(())
+    Ok(true)
 }
 
 fn set_secure_mode(_data_dir: &Path) -> Result<(), String> {

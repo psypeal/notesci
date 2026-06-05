@@ -375,6 +375,14 @@ jobs:
             if ($LASTEXITCODE -ne 0) {
               throw "installed bundled Python backend event loop check failed with exit code $LASTEXITCODE"
             }
+            & (Join-Path $installDir "python/python.exe") -c "import importlib.util, shutil; from notesci.agent.mcp_tools import _stdio_env; env=_stdio_env({}); assert shutil.which('uvx', path=env.get('PATH')) or shutil.which('uv', path=env.get('PATH')) or importlib.util.find_spec('uv'); print('uvx MCP launcher fallback OK')"
+            if ($LASTEXITCODE -ne 0) {
+              throw "installed bundled Python is missing uv for uvx-based MCP fallback"
+            }
+            & (Join-Path $installDir "python/python.exe") -c "from notesci.agent.mcp_tools import _build_connection; c=_build_connection('stdio', {'command':'uvx','args':['--from','zotero-mcp-server','zotero-mcp','serve','--transport','stdio'],'env':{'ZOTERO_LOCAL':'true'}}); print(c['command'], c['args'][:4]); assert c['transport']=='stdio'; assert c['command'].lower().endswith(('uvx.exe','uv.exe','python.exe')); assert 'PATH' in c['env']"
+            if ($LASTEXITCODE -ne 0) {
+              throw "installed bundled Python could not resolve Zotero uvx MCP stdio launcher"
+            }
           }
 
           function Get-NotesciRuntimeProcesses {
