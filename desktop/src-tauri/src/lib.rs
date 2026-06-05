@@ -79,7 +79,7 @@ const BACKEND_PORT: u16 = 8765;
 // migrations + checkpointer init dominate. Subsequent launches are
 // usually <2s.
 const STARTUP_TIMEOUT_DEFAULT: Duration = Duration::from_secs(300);
-const STARTUP_POLL_INTERVAL: Duration = Duration::from_millis(200);
+const STARTUP_POLL_INTERVAL: Duration = Duration::from_millis(120);
 const STARTUP_TIMEOUT_ENV: &str = "NOTESCI_BACKEND_STARTUP_TIMEOUT_SECS";
 const STARTUP_LOG_FILE: &str = "backend-startup.log";
 const STARTUP_LOG_TAIL_BYTES: usize = 8192;
@@ -609,14 +609,14 @@ fn wait_for_backend_child(
 fn wait_for_readyz(addr: &str) -> Result<(), String> {
     let mut stream = TcpStream::connect_timeout(
         &addr.parse().map_err(|e| format!("bad addr {addr}: {e}"))?,
-        Duration::from_millis(500),
+        Duration::from_millis(250),
     )
     .map_err(|e| format!("connection failed: {e}"))?;
     stream
-        .set_read_timeout(Some(Duration::from_millis(500)))
+        .set_read_timeout(Some(Duration::from_millis(250)))
         .map_err(|e| format!("readyz read timeout setup failed: {e}"))?;
     stream
-        .set_write_timeout(Some(Duration::from_millis(500)))
+        .set_write_timeout(Some(Duration::from_millis(250)))
         .map_err(|e| format!("readyz write timeout setup failed: {e}"))?;
     let request = format!(
         "GET /readyz HTTP/1.1\r\nHost: {addr}\r\nConnection: close\r\nUser-Agent: notesci-desktop\r\n\r\n"
@@ -739,16 +739,17 @@ fn show_startup_loading_page(win: &tauri::WebviewWindow) -> Result<(), String> {
         .map_err(|e| format!("failed to navigate to startup loading page: {e}"))?;
     let loading_page = r#"<!doctype html><html><head><meta charset="utf-8"/>
 <title>Starting notesci</title><style>
-:root{color-scheme:light;}*{box-sizing:border-box;-webkit-app-region:no-drag!important;}html,body{margin:0;width:100%;height:100%;overflow:hidden;overscroll-behavior:none;}body{display:grid;place-items:center;background:radial-gradient(circle at 18% 18%,#e9f6eb 0,#e9f6eb 20%,transparent 46%),radial-gradient(circle at 88% 4%,#e8edf8 0,#e8edf8 18%,transparent 44%),linear-gradient(135deg,#f7f1df 0%,#edf3e8 48%,#e7eff5 100%);font-family:Georgia,'Times New Roman',serif;color:#1f2a24;}
-.card{width:min(560px,calc(100vw - 42px));padding:34px 36px;border:1px solid rgba(54,68,55,.16);border-radius:26px;background:rgba(255,255,255,.76);box-shadow:0 24px 80px rgba(37,52,42,.16);backdrop-filter:blur(18px);}
-.top{display:flex;align-items:center;gap:16px;margin-bottom:20px;}.mark{width:44px;height:44px;border-radius:16px;background:#263b2d;position:relative;box-shadow:inset 0 0 0 1px rgba(255,255,255,.16);}.mark:after{content:'';position:absolute;inset:10px;border:2px solid #f7e5a2;border-left-color:transparent;border-radius:999px;animation:spin 1s linear infinite;}
-.eyebrow{margin:0 0 4px;font:11px/1.2 ui-monospace,SFMono-Regular,Consolas,monospace;letter-spacing:.12em;text-transform:uppercase;color:#66736a;}h1{margin:0;font-size:28px;letter-spacing:-.02em;}p{margin:8px 0 0;color:#536159;font:15px/1.6 system-ui,-apple-system,sans-serif;}
-.steps{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:24px;}.step{height:6px;border-radius:999px;background:rgba(38,59,45,.12);overflow:hidden;}.step:before{content:'';display:block;width:60%;height:100%;border-radius:inherit;background:#263b2d;animation:load 1.45s ease-in-out infinite;}.step:nth-child(2):before{animation-delay:.18s}.step:nth-child(3):before{animation-delay:.36s}
-.hint{margin-top:14px;color:#6a766e;font:12.5px/1.5 system-ui,-apple-system,sans-serif;}@keyframes spin{to{transform:rotate(360deg);}}@keyframes load{0%{transform:translateX(-110%);}100%{transform:translateX(190%);}}
+:root{color-scheme:light;}*{box-sizing:border-box;-webkit-app-region:no-drag!important;}html,body{margin:0;width:100%;height:100%;overflow:hidden;overscroll-behavior:none;}body{display:grid;place-items:center;background:radial-gradient(circle at 16% 16%,#e8f5e9 0,#e8f5e9 18%,transparent 44%),radial-gradient(circle at 86% 2%,#e7edf7 0,#e7edf7 20%,transparent 46%),linear-gradient(135deg,#f7f1df 0%,#eef4ea 48%,#e6eef4 100%);font-family:Georgia,'Times New Roman',serif;color:#1f2a24;}
+.card{width:min(620px,calc(100vw - 42px));padding:32px 34px;border:1px solid rgba(54,68,55,.16);border-radius:28px;background:rgba(255,255,255,.78);box-shadow:0 26px 84px rgba(37,52,42,.16);backdrop-filter:blur(18px);}
+.top{display:flex;align-items:center;gap:16px;margin-bottom:18px;}.mark{width:46px;height:46px;border-radius:17px;background:linear-gradient(145deg,#23392a,#3c5741);position:relative;box-shadow:inset 0 0 0 1px rgba(255,255,255,.18),0 14px 30px rgba(31,42,36,.18);}.mark:after{content:'';position:absolute;inset:10px;border:2px solid #f7e5a2;border-left-color:transparent;border-radius:999px;animation:spin .9s linear infinite;}
+.eyebrow{margin:0 0 4px;font:11px/1.2 ui-monospace,SFMono-Regular,Consolas,monospace;letter-spacing:.14em;text-transform:uppercase;color:#66736a;}h1{margin:0;font-size:30px;letter-spacing:-.025em;}p{margin:8px 0 0;color:#536159;font:15px/1.6 system-ui,-apple-system,sans-serif;}
+.rail{height:8px;border-radius:999px;background:rgba(38,59,45,.12);overflow:hidden;margin-top:24px;}.rail:before{content:'';display:block;width:38%;height:100%;border-radius:inherit;background:linear-gradient(90deg,#263b2d,#7a8f5c,#263b2d);animation:load 1.25s ease-in-out infinite;}
+.stage-list{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:18px 0 0;padding:0;list-style:none;font:11px/1.35 ui-monospace,SFMono-Regular,Consolas,monospace;color:#6a766e;text-transform:uppercase;letter-spacing:.08em;}.stage-list li{padding:8px 9px;border-radius:12px;background:rgba(38,59,45,.06);border:1px solid rgba(54,68,55,.08);}
+.hint{margin-top:14px;color:#6a766e;font:12.5px/1.5 system-ui,-apple-system,sans-serif;}@keyframes spin{to{transform:rotate(360deg);}}@keyframes load{0%{transform:translateX(-105%);}100%{transform:translateX(270%);}}
 </style></head><body><main class="card"><div class="top"><div class="mark"></div><div><div class="eyebrow">Local startup</div><h1 id="startup-title">Starting notesci</h1></div></div>
-<p id="startup-detail">Preparing the local research workspace. First launch initializes the bundled database once; later launches reuse it.</p>
-<div class="steps" aria-hidden="true"><div class="step"></div><div class="step"></div><div class="step"></div></div>
-<div class="hint">Keep this window open. The app will switch to the workspace as soon as the local backend is ready.</div></main>
+<p id="startup-detail">Preparing the local research workspace. Existing data and bundled services are reused whenever possible.</p>
+<div class="rail" aria-hidden="true"></div><ul class="stage-list" aria-hidden="true"><li>database</li><li>backend</li><li>workspace</li></ul>
+<div class="hint">This is a local-only startup. First launch may initialize storage once; later launches should open faster.</div></main>
 <script>window.notesciSetStartupStatus=function(title,detail){var t=document.getElementById('startup-title');var d=document.getElementById('startup-detail');if(t&&title)t.textContent=title;if(d&&detail)d.textContent=detail;};</script>
 </body></html>"#;
     let script = format!(

@@ -65,15 +65,40 @@ jobs:
           fi
 
       - uses: dtolnay/rust-toolchain@stable
-      - uses: actions/setup-node@v4
-        with:
-          node-version: ${{ env.NODE_VERSION }}
       - uses: pnpm/action-setup@v3
         with:
           version: ${{ env.PNPM_VERSION }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+          cache-dependency-path: frontend/pnpm-lock.yaml
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Cache Cargo build outputs
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            ~/.cargo/bin
+            desktop/src-tauri/target
+          key: linux-cargo-${{ hashFiles('desktop/src-tauri/Cargo.lock') }}
+          restore-keys: |
+            linux-cargo-
+
+      - name: Cache embedded runtimes
+        uses: actions/cache@v4
+        with:
+          path: |
+            build/pg-raw/linux
+            build/py-raw/linux
+            build/pgvector-src
+          key: linux-embedded-${{ env.PG_VERSION }}-${{ env.PGVECTOR_VERSION }}-${{ env.PYTHON_VERSION }}-${{ hashFiles('packaging/embedded-postgres/*.sh', 'packaging/embedded-python/*.sh') }}
+          restore-keys: |
+            linux-embedded-${{ env.PG_VERSION }}-${{ env.PGVECTOR_VERSION }}-${{ env.PYTHON_VERSION }}-
 
       - name: Build frontend
         run: |
@@ -156,15 +181,40 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: aarch64-apple-darwin,x86_64-apple-darwin
-      - uses: actions/setup-node@v4
-        with:
-          node-version: ${{ env.NODE_VERSION }}
       - uses: pnpm/action-setup@v3
         with:
           version: ${{ env.PNPM_VERSION }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+          cache-dependency-path: frontend/pnpm-lock.yaml
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Cache Cargo build outputs
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            ~/.cargo/bin
+            desktop/src-tauri/target
+          key: macos-cargo-${{ hashFiles('desktop/src-tauri/Cargo.lock') }}
+          restore-keys: |
+            macos-cargo-
+
+      - name: Cache embedded runtimes
+        uses: actions/cache@v4
+        with:
+          path: |
+            build/pg-raw/macos
+            build/py-raw/macos-arm64
+            build/pgvector-src
+          key: macos-embedded-${{ env.PG_VERSION }}-${{ env.PGVECTOR_VERSION }}-${{ env.PYTHON_VERSION }}-${{ hashFiles('packaging/embedded-postgres/*.sh', 'packaging/embedded-python/*.sh') }}
+          restore-keys: |
+            macos-embedded-${{ env.PG_VERSION }}-${{ env.PGVECTOR_VERSION }}-${{ env.PYTHON_VERSION }}-
 
       - name: Build frontend
         run: |
@@ -215,15 +265,40 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: x86_64-pc-windows-msvc
-      - uses: actions/setup-node@v4
-        with:
-          node-version: ${{ env.NODE_VERSION }}
       - uses: pnpm/action-setup@v3
         with:
           version: ${{ env.PNPM_VERSION }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+          cache-dependency-path: frontend/pnpm-lock.yaml
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Cache Cargo build outputs
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            ~/.cargo/bin
+            desktop/src-tauri/target
+          key: windows-cargo-${{ hashFiles('desktop/src-tauri/Cargo.lock') }}
+          restore-keys: |
+            windows-cargo-
+
+      - name: Cache embedded runtimes
+        uses: actions/cache@v4
+        with:
+          path: |
+            build/pg-raw/windows
+            build/py-raw/windows
+            build/pgvector-src
+          key: windows-embedded-${{ env.PG_VERSION }}-${{ env.PGVECTOR_VERSION }}-${{ env.PYTHON_VERSION }}-${{ hashFiles('packaging/embedded-postgres/*.sh', 'packaging/embedded-python/*.sh') }}
+          restore-keys: |
+            windows-embedded-${{ env.PG_VERSION }}-${{ env.PGVECTOR_VERSION }}-${{ env.PYTHON_VERSION }}-
 
       - name: Build frontend
         shell: bash

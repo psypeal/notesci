@@ -29,6 +29,7 @@ from notesci.agent.mcp_tools import (
     _resolve_zotero_collection_key,
     _tool_arg_names,
     _wrap_zotero_collection_items_tool,
+    _zotero_descendant_collections,
     _zotero_collection_matches_for_name,
     _zotero_collection_search_matches_for_name,
 )
@@ -327,6 +328,21 @@ def test_zotero_collection_tree_match_nested_plain_line_name():
     ]
 
 
+def test_zotero_collection_tree_finds_child_collection_items_fallback_keys():
+    tree = """
+# Zotero Collections
+
+- Parent (Key: ABCD1234)
+  - Brain Aging (Key: EFGH5678)
+  - Brain Imaging (Key: IJKL9012)
+- Other (Key: MNOP3456)
+"""
+    assert _zotero_descendant_collections(tree, "ABCD1234") == [
+        ("Brain Aging", "EFGH5678"),
+        ("Brain Imaging", "IJKL9012"),
+    ]
+
+
 def test_zotero_collection_tree_match_duplicate_terminal_names():
     tree = """
 # Zotero Collections
@@ -583,6 +599,46 @@ async def test_zotero_collection_items_wrapper_accepts_query_alias():
 
     assert result == "items"
     assert upstream.calls == [{"collection_key": "ABCD1234"}]
+
+
+async def test_zotero_collection_items_wrapper_expands_empty_parent_collection():
+    upstream = _FakeMcpTool(
+        "No items found in collection: Parent (Key: ABCD1234)",
+        args={"collection_key": {}, "limit": {}},
+        name="zotero__zotero_get_collection_items",
+    )
+    collections = _FakeMcpTool(
+        """
+# Zotero Collections
+
+- Parent (Key: ABCD1234)
+  - Brain Aging (Key: EFGH5678)
+""",
+        args={"limit": {}},
+        name="zotero__zotero_get_collections",
+    )
+
+    async def ainvoke(payload: dict):
+        upstream.calls.append(payload)
+        if payload["collection_key"] == "ABCD1234":
+            return "No items found in collection: Parent (Key: ABCD1234)"
+        return "# Items in Collection: Brain Aging\n\n## 1. Example paper"
+
+    upstream.ainvoke = ainvoke
+    wrapped = _wrap_zotero_collection_items_tool(
+        upstream,
+        search_tool=None,
+        collections_tool=collections,
+    )
+
+    result = await wrapped.ainvoke({"collection_name": "Parent"})
+
+    assert "Items found in child collections" in result
+    assert "Example paper" in result
+    assert upstream.calls == [
+        {"collection_key": "ABCD1234", "limit": 50},
+        {"collection_key": "EFGH5678", "limit": 50},
+    ]
 
 
 async def test_zotero_collection_items_wrapper_rejects_ambiguous_name_before_fetch():

@@ -489,6 +489,66 @@ def _looks_like_source_query(query: str) -> bool:
     return any(token in q for token in _SOURCE_QUERY_HINTS)
 
 
+def _tool_arg_names(tool: BaseTool) -> set[str]:
+    args = getattr(tool, "args", None)
+    if isinstance(args, dict):
+        return {str(key) for key in args}
+    schema = getattr(tool, "args_schema", None)
+    fields = getattr(schema, "model_fields", None)
+    if isinstance(fields, dict):
+        return {str(key) for key in fields}
+    fields = getattr(schema, "__fields__", None)
+    if isinstance(fields, dict):
+        return {str(key) for key in fields}
+    return set()
+
+
+def _web_tool_arg_variants(tool: BaseTool, query: str, limit: int) -> tuple[dict[str, Any], ...]:
+    """Prefer the tool's advertised schema over trial-and-error payloads.
+
+    MCP servers often validate input strictly. Trying eight bad payload
+    shapes before the one useful call makes chat feel slow, especially on
+    stdio servers. This keeps the broad fallback behavior for unknown
+    tools while making common Zotero/Obsidian/Notion schemas direct.
+    """
+    arg_names = _tool_arg_names(tool)
+    generic = (
+        {"query": query, "max_results": limit},
+        {"query": query, "count": limit},
+        {"query": query, "top_k": limit},
+        {"query": query, "num_results": limit},
+        {"q": query},
+        {"search_query": query},
+        {"input": query},
+        {"limit": limit},
+        {},
+    )
+    if not arg_names:
+        return generic
+
+    name = (tool.name or "").lower()
+    variants: list[dict[str, Any]] = []
+
+    def add(payload: dict[str, Any]) -> None:
+        filtered = {key: value for key, value in payload.items() if key in arg_names}
+        if filtered not in variants:
+            variants.append(filtered)
+
+    if "zotero" in name and "get_collection_items" in name:
+        for ref_key in ("collection_name", "collection", "query", "name", "title"):
+            add({ref_key: query, "limit": limit})
+        add({"collection_key": query, "limit": limit})
+
+    for query_key in ("query", "q", "search_query", "input"):
+        if query_key in arg_names:
+            add({query_key: query, "max_results": limit, "count": limit, "top_k": limit, "num_results": limit, "limit": limit})
+
+    if "limit" in arg_names:
+        add({"limit": limit})
+    add({})
+    return tuple(variants or generic)
+
+
 def _looks_like_casual_fast_path(query: str | None) -> bool:
     q = _normalize_space_text(query or "")
     if not q:
@@ -1401,21 +1461,9 @@ async def _retrieve_web(
     # Deterministic ordering so UI traces are stable for snapshots.
     candidates.sort(key=lambda t: (_source_tool_priority(t, query), t.name))
 
-    arg_variants = (
-        {"query": query, "max_results": limit},
-        {"query": query, "count": limit},
-        {"query": query, "top_k": limit},
-        {"query": query, "num_results": limit},
-        {"q": query},
-        {"search_query": query},
-        {"input": query},
-        {"limit": limit},
-        {},
-    )
-
     for tool in candidates:
         rows: list[dict[str, Any]] = []
-        for args in arg_variants:
+        for args in _web_tool_arg_variants(tool, query, limit):
             try:
                 raw = await tool.ainvoke(args)
             except Exception:

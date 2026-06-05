@@ -520,13 +520,15 @@ export function ChatPane({
   // Scroll to bottom on new messages — but only if the user is already
   // near the bottom. If they've scrolled up to read older messages,
   // don't yank the viewport away from where they're reading.
-  const [nearBottom, setNearBottom] = useState(true)
+  const nearBottomRef = useRef(true)
   useEffect(() => {
     const el = bodyRef.current
     if (!el) return
-    if (nearBottom) {
+    if (!nearBottomRef.current) return
+    const frame = window.requestAnimationFrame(() => {
       el.scrollTo({ top: el.scrollHeight })
-    }
+    })
+    return () => window.cancelAnimationFrame(frame)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [messages, sending])
   // Track scroll position for the auto-scroll gate + the "jump to latest"
@@ -536,9 +538,8 @@ export function ChatPane({
     if (!el) return
     const onScroll = () => {
       const threshold = 80
-      setNearBottom(
-        el.scrollHeight - el.scrollTop - el.clientHeight < threshold,
-      )
+      const next = el.scrollHeight - el.scrollTop - el.clientHeight < threshold
+      nearBottomRef.current = next
     }
     el.addEventListener('scroll', onScroll, { passive: true })
     return () => el.removeEventListener('scroll', onScroll)
@@ -557,10 +558,10 @@ export function ChatPane({
       let aiStarted = false
       let reply = ''
       let streamedThreadId: string | null = null
-      let flushTimer: number | null = null
+      let flushFrame: number | null = null
       let pendingRetrieved: ChatMessage['retrieved'] | undefined
       const flushReply = () => {
-        flushTimer = null
+        flushFrame = null
         if (!aiStarted) {
           aiStarted = true
           setMessages((m) => [...m, { role: 'ai', content: reply, retrieved: pendingRetrieved }])
@@ -575,8 +576,8 @@ export function ChatPane({
         }
       }
       const scheduleFlush = () => {
-        if (flushTimer != null) return
-        flushTimer = window.setTimeout(flushReply, 50)
+        if (flushFrame != null) return
+        flushFrame = window.requestAnimationFrame(flushReply)
       }
       await apiSse('/chat/stream', {
         method: 'POST',
@@ -655,8 +656,8 @@ export function ChatPane({
           if (typeof event.final_text === 'string' && event.final_text) {
             reply = event.final_text
           }
-          if (flushTimer != null) {
-            window.clearTimeout(flushTimer)
+          if (flushFrame != null) {
+            window.cancelAnimationFrame(flushFrame)
             flushReply()
           } else if (!aiStarted && reply) {
             flushReply()
@@ -935,7 +936,10 @@ export function ChatPane({
               onLinkClick={onLinkClick}
             />
           ))}
-          {sending && (
+          {sending &&
+            (messages.length === 0 ||
+              messages[messages.length - 1].role !== 'ai' ||
+              !messages[messages.length - 1].content.trim()) && (
             <div
               style={{
                 display: 'flex',

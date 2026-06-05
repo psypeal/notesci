@@ -362,9 +362,9 @@ export function GeneralPage() {
         let aiStarted = false
         let reply = ''
         let turnSeq: number | undefined
-        let flushTimer: number | null = null
+        let flushFrame: number | null = null
         const flushReply = () => {
-          flushTimer = null
+          flushFrame = null
           if (!aiStarted) {
             aiStarted = true
             setMessages((prev) => [...prev, { role: 'ai', content: reply }])
@@ -379,8 +379,8 @@ export function GeneralPage() {
           }
         }
         const scheduleFlush = () => {
-          if (flushTimer != null) return
-          flushTimer = window.setTimeout(flushReply, 50)
+          if (flushFrame != null) return
+          flushFrame = window.requestAnimationFrame(flushReply)
         }
         const modelToSend = await resolveModelForRequest()
         await apiSse('/chat/stream', {
@@ -401,8 +401,8 @@ export function GeneralPage() {
             if (!aiStarted && typeof event.final_text === 'string' && event.final_text) {
               reply = event.final_text
             }
-            if (flushTimer != null) {
-              window.clearTimeout(flushTimer)
+            if (flushFrame != null) {
+              window.cancelAnimationFrame(flushFrame)
               flushReply()
             } else if (!aiStarted && reply) {
               flushReply()
@@ -1429,13 +1429,30 @@ function ActiveChat({
       }
     | Promise<void | boolean | { handled: boolean; open: boolean }>
 } & AttachProps) {
-  // Auto-scroll the messages list to bottom on new message or send.
+  // Auto-scroll while the user is already at the bottom. If they scroll
+  // up to read, streaming output no longer yanks the viewport or fights
+  // the compositor.
   const listRef = useRef<HTMLDivElement>(null)
+  const nearBottomRef = useRef(true)
   useEffect(() => {
     const el = listRef.current
     if (!el) return
-    el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' })
-  }, [messages.length, sending])
+    if (!nearBottomRef.current) return
+    const frame = window.requestAnimationFrame(() => {
+      el.scrollTo({ top: el.scrollHeight })
+    })
+    return () => window.cancelAnimationFrame(frame)
+  }, [messages, sending])
+  useEffect(() => {
+    const el = listRef.current
+    if (!el) return
+    const onScroll = () => {
+      nearBottomRef.current =
+        el.scrollHeight - el.scrollTop - el.clientHeight < 80
+    }
+    el.addEventListener('scroll', onScroll, { passive: true })
+    return () => el.removeEventListener('scroll', onScroll)
+  }, [])
 
   return (
     <main
@@ -1534,7 +1551,12 @@ function ActiveChat({
               )
             })
           )}
-          {sending && <ThinkingIndicator />}
+          {sending &&
+            (messages.length === 0 ||
+              messages[messages.length - 1].role !== 'ai' ||
+              !messages[messages.length - 1].content.trim()) && (
+              <ThinkingIndicator />
+            )}
         </div>
       </div>
 

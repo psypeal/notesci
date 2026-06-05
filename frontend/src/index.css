@@ -1243,11 +1243,27 @@ a:focus-visible,
    * wheel movement feels linear and steady. */
   will-change: scroll-position;
   contain: paint;
+  overflow-anchor: none;
   overscroll-behavior: contain;
   scroll-behavior: auto;
   scrollbar-gutter: stable;
   scrollbar-width: thin;
   scrollbar-color: color-mix(in oklch, var(--color-indigo) 35%, white) color-mix(in oklch, white 55%, transparent);
+}
+
+.ns-chat-scroll,
+.ns-chat-track,
+.ns-chat-ai,
+.ns-chat-user {
+  overflow-anchor: none;
+}
+
+.ns-chat-track {
+  transform: translateZ(0);
+}
+
+.ns-chat-ai-body {
+  contain: paint;
 }
 
 /* File/session rows: keep menu affordance hidden until hover/focus and
