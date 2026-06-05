@@ -48,9 +48,38 @@ log "extracting PostgreSQL source"
 mkdir -p "$SRC"
 tar -xjf "$ARCHIVE" --strip-components=1 -C "$SRC"
 
-if [[ ! -f "$SRC/contrib/pgcrypto/win32ver.rc" && -f "$SRC/src/port/win32ver.rc" ]]; then
-    cp "$SRC/src/port/win32ver.rc" "$SRC/contrib/pgcrypto/win32ver.rc"
-fi
+PG_VERSION_RC="${PG_VERSION//./,},0,0"
+cat > "$SRC/contrib/pgcrypto/win32ver.rc" <<RC
+#include <winver.h>
+
+VS_VERSION_INFO VERSIONINFO
+ FILEVERSION $PG_VERSION_RC
+ PRODUCTVERSION $PG_VERSION_RC
+ FILEFLAGSMASK 0x3fL
+ FILEFLAGS 0x0L
+ FILEOS VOS_NT_WINDOWS32
+ FILETYPE VFT_DLL
+ FILESUBTYPE 0x0L
+BEGIN
+ BLOCK "StringFileInfo"
+ BEGIN
+  BLOCK "040904b0"
+  BEGIN
+   VALUE "CompanyName", "PostgreSQL Global Development Group\\0"
+   VALUE "FileDescription", "pgcrypto extension\\0"
+   VALUE "FileVersion", "$PG_VERSION\\0"
+   VALUE "InternalName", "pgcrypto\\0"
+   VALUE "OriginalFilename", "pgcrypto.dll\\0"
+   VALUE "ProductName", "PostgreSQL\\0"
+   VALUE "ProductVersion", "$PG_VERSION\\0"
+  END
+ END
+ BLOCK "VarFileInfo"
+ BEGIN
+  VALUE "Translation", 0x0409, 1200
+ END
+END
+RC
 
 log "building contrib/pgcrypto against $PG_CONFIG"
 (
