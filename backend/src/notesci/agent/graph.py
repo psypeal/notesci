@@ -55,7 +55,11 @@ from .providers import make_chat_model, resolve_default_model
 
 log = logging.getLogger(__name__)
 
-DEFAULT_TOP_K = 5
+DEFAULT_TOP_K = 8
+_VECTOR_CANDIDATE_LIMIT = DEFAULT_TOP_K * 8
+_VECTOR_PRIMARY_CHUNKS_PER_MATERIAL = 1
+_VECTOR_MAX_CHUNKS_PER_MATERIAL = 2
+_TREE_MATERIAL_LIMIT = 12
 _VECTOR_TOP_CONFIDENCE_DISTANCE = 0.62
 _VECTOR_WEAK_DISTANCE_CEILING = 0.92
 _VECTOR_SPREAD_CEILING = 0.09
@@ -352,7 +356,7 @@ async def _retrieve_vector(project_id: str, query: str) -> list[RetrievedChunk]:
             ORDER BY dist
             LIMIT %s
             """,
-            (qvec, project_id, DEFAULT_TOP_K),
+            (qvec, project_id, _VECTOR_CANDIDATE_LIMIT),
         )
         rows = await cur.fetchall()
     # Filter out degenerate-embedding rows. pgvector returns NaN when the
@@ -397,7 +401,55 @@ async def _retrieve_vector(project_id: str, query: str) -> list[RetrievedChunk]:
                 material_url=_normalize_material_url(material_uri),
             )
         )
-    return out
+    return _balance_retrieved_chunks(out)
+
+
+def _balance_retrieved_chunks(
+    candidates: list[RetrievedChunk],
+    *,
+    limit: int = DEFAULT_TOP_K,
+    primary_per_material: int = _VECTOR_PRIMARY_CHUNKS_PER_MATERIAL,
+    max_per_material: int = _VECTOR_MAX_CHUNKS_PER_MATERIAL,
+) -> list[RetrievedChunk]:
+    """Prefer breadth across project materials before adding repeats.
+
+    Plain nearest-neighbor retrieval can return every top chunk from a single
+    long PDF. That makes multi-file projects behave as if the model can only
+    see one upload. Preserve candidate distance order, but first admit one
+    chunk per material, then fill remaining budget with next-best chunks up to
+    a small per-material cap.
+    """
+    if limit <= 0:
+        return []
+
+    selected: list[RetrievedChunk] = []
+    selected_ids: set[int] = set()
+    per_material: dict[str, int] = {}
+
+    def admit(candidate: RetrievedChunk, per_material_limit: int) -> None:
+        if len(selected) >= limit:
+            return
+        chunk_id = int(candidate["chunk_id"])
+        if chunk_id in selected_ids:
+            return
+        material_id = str(candidate["material_id"])
+        if per_material.get(material_id, 0) >= per_material_limit:
+            return
+        selected.append(candidate)
+        selected_ids.add(chunk_id)
+        per_material[material_id] = per_material.get(material_id, 0) + 1
+
+    for candidate in candidates:
+        admit(candidate, primary_per_material)
+        if len(selected) >= limit:
+            return selected
+
+    for candidate in candidates:
+        admit(candidate, max_per_material)
+        if len(selected) >= limit:
+            return selected
+
+    return selected
 
 
 def _has_relevant_vector_signal(chunks: list[RetrievedChunk]) -> bool:
@@ -1647,9 +1699,9 @@ async def _retrieve_tree(project_id: str, query: str) -> list[RetrievedChunk]:
               JOIN materials m ON m.id = mt.material_id
              WHERE mt.project_id = %s AND mt.status = 'ready'
              ORDER BY m.created_at DESC
-             LIMIT 5
+             LIMIT %s
             """,
-            (project_id,),
+            (project_id, _TREE_MATERIAL_LIMIT),
         )
         rows = await cur.fetchall()
 

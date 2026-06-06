@@ -144,11 +144,11 @@ export function buildSlashCommands(
       label: '/draft',
       hint:
         n >= 5
-          ? 'Draft a literature review from the top 5.'
+          ? `Draft a literature review from all ${n} sources.`
           : 'Draft a literature review from these sources.',
       insert:
         n >= 5
-          ? 'Draft a literature review from the top 5 sources, with citations.'
+          ? `Draft a literature review from all ${n} sources, with citations.`
           : `Draft a literature review from ${n === 1 ? 'this source' : `these ${n} sources`}, with citations.`,
     },
   ]

@@ -21,6 +21,7 @@ import pytest
 from httpx import ASGITransport, AsyncClient
 from langchain_core.messages import AIMessage
 
+from notesci.agent import graph as graph_module
 from notesci.agent import providers as providers_module
 from notesci.config import settings
 from notesci.main import app
@@ -85,6 +86,55 @@ class _FailingLLM:
 class _FakeEmb:
     async def aembed_query(self, _q: str):
         return [0.0] * 1536
+
+
+def test_retrieval_balancer_prefers_material_breadth():
+    candidates = [
+        {
+            "chunk_id": 1,
+            "material_id": "a",
+            "title": "A",
+            "text": "A1",
+            "distance": 0.10,
+            "material_url": None,
+        },
+        {
+            "chunk_id": 2,
+            "material_id": "a",
+            "title": "A",
+            "text": "A2",
+            "distance": 0.11,
+            "material_url": None,
+        },
+        {
+            "chunk_id": 3,
+            "material_id": "a",
+            "title": "A",
+            "text": "A3",
+            "distance": 0.12,
+            "material_url": None,
+        },
+        {
+            "chunk_id": 4,
+            "material_id": "b",
+            "title": "B",
+            "text": "B1",
+            "distance": 0.13,
+            "material_url": None,
+        },
+        {
+            "chunk_id": 5,
+            "material_id": "c",
+            "title": "C",
+            "text": "C1",
+            "distance": 0.14,
+            "material_url": None,
+        },
+    ]
+
+    balanced = graph_module._balance_retrieved_chunks(candidates, limit=4)
+
+    assert [c["material_id"] for c in balanced] == ["a", "b", "c", "a"]
 
 
 @pytest.fixture
