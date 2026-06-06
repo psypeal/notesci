@@ -5602,6 +5602,8 @@ _MCP_LOAD_HINTS = (
     "online",
     "library",
     "libraries",
+    "collection",
+    "collections",
     "vault",
     "database",
     "databases",
@@ -5612,6 +5614,20 @@ _MCP_LOAD_HINTS = (
     "search",
     "look up",
     "lookup",
+)
+
+
+_ZOTERO_COLLECTION_ITEM_HINTS = (
+    "item",
+    "items",
+    "paper",
+    "papers",
+    "reference",
+    "references",
+    "entry",
+    "entries",
+    "content",
+    "contents",
 )
 
 
@@ -5627,6 +5643,11 @@ def _requested_mcp_slugs_for_turn(message: str) -> set[str] | None:
     explicit = {slug for slug in _EXPLICIT_MCP_SLUGS if slug in text}
     if explicit:
         return explicit
+    if (
+        ("collection" in text or "collections" in text)
+        and any(hint in text for hint in _ZOTERO_COLLECTION_ITEM_HINTS)
+    ):
+        return {"zotero"}
     if any(hint in text for hint in _MCP_LOAD_HINTS):
         return None
     return set()

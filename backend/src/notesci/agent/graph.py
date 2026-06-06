@@ -2122,43 +2122,42 @@ def _format_mcp_tool_status(
             )
         )
         if collection_item_intent:
-            item_tools = [
-                name
-                for name in mcp_tool_names
-                if (
-                    "zotero" in name.lower()
-                    and "collection" in name.lower()
+            tool_text_by_name = {
+                getattr(tool, "name", "") or "": (
+                    f"{getattr(tool, 'name', '') or ''} "
+                    f"{getattr(tool, 'description', '') or ''}"
+                ).lower()
+                for tool in ctx.tools
+            }
+
+            def tool_search_text(name: str) -> str:
+                return tool_text_by_name.get(name, name).lower()
+
+    item_tools = [
+        name
+        for name in mcp_tool_names
+        if (
+            "zotero" in tool_search_text(name)
+                    and "collection" in tool_search_text(name)
                     and any(
-                        token in name.lower()
+                        token in tool_search_text(name)
                         for token in ("item", "items", "paper", "papers", "reference")
-                    )
-                )
-            ]
-            collection_tools = [
-                name
-                for name in mcp_tool_names
-                if (
-                    "zotero" in name.lower()
-                    and "collection" in name.lower()
-                    and "item" not in name.lower()
-                    and any(token in name.lower() for token in ("get", "list", "browse", "search", "find"))
-                )
-            ]
-            item_tool_hint = item_tools[0] if item_tools else "the Zotero collection-items tool"
-            collection_tool_hint = (
-                " or ".join(collection_tools[:2])
-                if collection_tools
-                else "zotero__zotero_search_collections or zotero__zotero_get_collections"
             )
+        )
+    ]
+    item_tool_hint = item_tools[0] if item_tools else "the Zotero collection-items tool"
             joined = (
-                f"{joined} | Zotero collection workflow: resolve the "
-                f"8-character collection key first with {collection_tool_hint}, "
-                f"then call {item_tool_hint} with collection_key, key, "
-                "collection_id, collectionId, or collection_name. "
-                "Do not pass a human-readable collection name as collection_key. "
-                "If the collection is in another Zotero library or group, call "
-                "zotero__zotero_list_libraries and "
-                "zotero__zotero_switch_library before resolving collections."
+                f"{joined} | Zotero collection-item workflow: call "
+                f"{item_tool_hint} directly with collection_name set to the "
+                "user's visible collection name. Do not stop after listing "
+                "collections. The Notesci wrapper resolves collection_name to "
+                "the Zotero key and expands empty parent collections. Use "
+                "zotero__zotero_get_collections or zotero__zotero_search_collections "
+                "only when the direct item call reports an ambiguous or missing "
+                "collection. If the collection is in another Zotero library or "
+                "group, call zotero__zotero_list_libraries and "
+                "zotero__zotero_switch_library, then retry the direct "
+                "collection_name item call."
             )
 
     failure_guidance = ""

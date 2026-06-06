@@ -1,6 +1,6 @@
 [package]
 name = "notesci"
-version = "0.1.27"
+version = "0.1.28"
 description = "notesci — personal research workspace (desktop)"
 authors = ["notesci maintainers"]
 edition = "2021"

@@ -35,9 +35,10 @@ from notesci.agent.mcp_tools import (
     _zotero_collection_matches_for_name,
     _zotero_collection_search_matches_for_name,
 )
+from notesci.agent.graph import RequestCtx, _format_mcp_tool_status
 from notesci.config import settings
 from notesci.db import get_conn
-from notesci.main import app
+from notesci.main import app, _requested_mcp_slugs_for_turn
 
 
 @pytest.fixture
@@ -1131,3 +1132,49 @@ async def test_harden_zotero_tools_keeps_collection_listing_when_description_men
     assert "Listing tool still resolved paper" in result
     assert collections.calls == [{"limit": 5000}]
     assert upstream.calls == [{"collection_id": "ABCD1234", "limit": 50}]
+
+
+def test_collection_item_wording_loads_mcp_tools():
+    assert _requested_mcp_slugs_for_turn(
+        'what are the items in the collection "Animal use"?'
+    ) == {"zotero"}
+
+
+def test_zotero_collection_item_guidance_prefers_direct_collection_name_call():
+    ctx = RequestCtx(
+        tool_to_server_id={
+            "zotero__zotero_get_collections": "srv-1",
+            "zotero__zotero_get_collection_items": "srv-1",
+        }
+    )
+
+    guidance = _format_mcp_tool_status(
+        ctx,
+        'what are the items in the collection "Animal use"?',
+    )
+
+    assert guidance is not None
+    assert "call zotero__zotero_get_collection_items directly" in guidance
+    assert "collection_name" in guidance
+    assert "Do not stop after listing collections" in guidance
+    assert "resolve the 8-character collection key first" not in guidance
+
+
+def test_zotero_collection_item_guidance_uses_tool_descriptions():
+    tool = _FakeMcpTool("zotero__get_items")
+    tool.description = "Get items in a specific Zotero collection."
+    ctx = RequestCtx(
+        tools=[tool],
+        tool_to_server_id={
+            "zotero__get_items": "srv-1",
+        },
+    )
+
+    guidance = _format_mcp_tool_status(
+        ctx,
+        'what are the items in the collection "Animal use"?',
+    )
+
+    assert guidance is not None
+    assert "call zotero__get_items directly" in guidance
+    assert "collection_name" in guidance
