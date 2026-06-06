@@ -2133,19 +2133,27 @@ def _format_mcp_tool_status(
             def tool_search_text(name: str) -> str:
                 return tool_text_by_name.get(name, name).lower()
 
-    item_tools = [
-        name
-        for name in mcp_tool_names
-        if (
-            "zotero" in tool_search_text(name)
+            item_tools = [
+                name
+                for name in mcp_tool_names
+                if (
+                    "zotero" in tool_search_text(name)
                     and "collection" in tool_search_text(name)
                     and any(
                         token in tool_search_text(name)
-                        for token in ("item", "items", "paper", "papers", "reference")
+                        for token in (
+                            "item",
+                            "items",
+                            "paper",
+                            "papers",
+                            "reference",
+                        )
+                    )
+                )
+            ]
+            item_tool_hint = (
+                item_tools[0] if item_tools else "the Zotero collection-items tool"
             )
-        )
-    ]
-    item_tool_hint = item_tools[0] if item_tools else "the Zotero collection-items tool"
             joined = (
                 f"{joined} | Zotero collection-item workflow: call "
                 f"{item_tool_hint} directly with collection_name set to the "
