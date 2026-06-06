@@ -68,6 +68,11 @@ const SKILL_LABELS: Record<string, string> = {
   'writing-clearly-and-concisely': 'Manuscript polish',
 }
 
+const EMPTY_ASSISTANT_REPLY =
+  'The model request completed, but no visible text came back. Try again, or switch models.'
+const INTERRUPTED_ASSISTANT_REPLY =
+  '\n\n[Stream interrupted before the final response finished.]'
+
 /** Shared between the real <textarea> and the SlashMirror overlay so
  *  the highlighted tokens line up under the textarea's caret. Any
  *  change to font / line-height / padding must be applied to BOTH. */
@@ -553,12 +558,12 @@ export function ChatPane({
     setSending(true)
     const ac = new AbortController()
     abortRef.current = ac
+    let aiStarted = false
+    let reply = ''
+    let flushFrame: number | null = null
     try {
       const modelToSend = await resolveModelForRequest()
-      let aiStarted = false
-      let reply = ''
       let streamedThreadId: string | null = null
-      let flushFrame: number | null = null
       let pendingRetrieved: ChatMessage['retrieved'] | undefined
       const flushReply = () => {
         flushFrame = null
@@ -656,6 +661,7 @@ export function ChatPane({
           if (typeof event.final_text === 'string' && event.final_text) {
             reply = event.final_text
           }
+          if (!reply.trim()) reply = EMPTY_ASSISTANT_REPLY
           if (flushFrame != null) {
             window.cancelAnimationFrame(flushFrame)
             flushReply()
@@ -721,9 +727,26 @@ export function ChatPane({
             : e.status === 502
               ? 'The agent failed mid-turn. Check the backend logs or switch model and retry.'
               : e.status === 504
-                ? 'The agent took too long to reply. Try a shorter prompt or simpler question.'
-                : `Chat failed (${e.status}${e.code ? ' · ' + e.code : ''}).`
+              ? 'The agent took too long to reply. Try a shorter prompt or simpler question.'
+              : `Chat failed (${e.status}${e.code ? ' · ' + e.code : ''}).`
       setError(msg)
+      if (flushFrame != null) {
+        window.cancelAnimationFrame(flushFrame)
+        flushFrame = null
+      }
+      if (aiStarted || reply.trim()) {
+        const content = reply.trim()
+          ? `${reply}${INTERRUPTED_ASSISTANT_REPLY}`
+          : EMPTY_ASSISTANT_REPLY
+        setMessages((m) =>
+          m.length > 0 && m[m.length - 1].role === 'ai'
+            ? m.map((message, i) =>
+                i === m.length - 1 ? { ...message, content } : message,
+              )
+            : [...m, { role: 'ai', content }],
+        )
+        return
+      }
       // Roll back the optimistic user message AND restore the input so
       // the user doesn't have to retype after a network blip.
       setMessages((m) => m.slice(0, -1))

@@ -26,6 +26,7 @@ from langchain_core.messages import AIMessage
 from notesci.agent import providers as providers_module
 from notesci.agent.messages import extract_text
 from notesci.draft_workflow import Interview
+from notesci.main import _last_visible_ai_text
 
 
 # ---------------------------------------------------------------------------
@@ -67,6 +68,23 @@ def test_extract_text_legacy_output_text():
 def test_extract_text_string_blocks_in_list():
     content = ["plain ", "string ", "blocks"]
     assert extract_text(content) == "plain string blocks"
+
+
+def test_last_visible_ai_text_skips_blank_protocol_messages():
+    messages = [
+        AIMessage(content=""),
+        AIMessage(content=[
+            {"type": "reasoning", "reasoning": "internal"},
+            {"type": "text", "text": "Visible answer."},
+        ]),
+        AIMessage(content=""),
+    ]
+
+    assert _last_visible_ai_text(messages) == "Visible answer."
+
+
+def test_last_visible_ai_text_returns_empty_when_no_visible_ai_text():
+    assert _last_visible_ai_text([AIMessage(content="")]) == ""
 
 
 # ---------------------------------------------------------------------------

@@ -321,6 +321,31 @@ export async function apiSse(
   const reader = r.body.getReader()
   const decoder = new TextDecoder()
   let buf = ''
+  const parseFrame = (frame: string) => {
+    const data = frame
+      .split('\n')
+      .filter((line) => line.startsWith('data:'))
+      .map((line) => line.slice(5).trimStart())
+      .join('\n')
+    if (!data) return
+    let parsed: Record<string, unknown>
+    try {
+      parsed = JSON.parse(data) as Record<string, unknown>
+    } catch (cause) {
+      const err = new Error('Malformed streaming response from the server.') as ApiError
+      err.status = 502
+      err.code = 'malformed_sse'
+      err.cause = cause
+      throw err
+    }
+    if (parsed.type === 'error') {
+      const err = new Error(String(parsed.message ?? 'Agent failed.')) as ApiError
+      err.status = 502
+      err.code = typeof parsed.code === 'string' ? parsed.code : 'agent_failed'
+      throw err
+    }
+    onEvent(parsed)
+  }
   while (true) {
     const { done, value } = await reader.read()
     if (done) break
@@ -329,24 +354,12 @@ export async function apiSse(
     while (idx !== -1) {
       const frame = buf.slice(0, idx)
       buf = buf.slice(idx + 2)
-      const data = frame
-        .split('\n')
-        .filter((line) => line.startsWith('data:'))
-        .map((line) => line.slice(5).trimStart())
-        .join('\n')
-      if (data) {
-        const parsed = JSON.parse(data) as Record<string, unknown>
-        if (parsed.type === 'error') {
-          const err = new Error(String(parsed.message ?? 'Agent failed.')) as ApiError
-          err.status = 502
-          err.code = typeof parsed.code === 'string' ? parsed.code : 'agent_failed'
-          throw err
-        }
-        onEvent(parsed)
-      }
+      parseFrame(frame)
       idx = buf.indexOf('\n\n')
     }
   }
+  buf += decoder.decode()
+  if (buf.trim()) parseFrame(buf)
 }
 
 /**

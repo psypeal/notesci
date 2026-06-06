@@ -5502,8 +5502,15 @@ async def chat(
     # Touch session.updated_at and persist citations (parsed [N] markers
     # from the AI reply against this turn's retrieved chunks).
     retrieved_list = list(out.get("retrieved") or [])
-    final_msg = out["messages"][-1]
-    final_text = extract_text(final_msg.content)
+    final_text = _last_visible_ai_text(list(out.get("messages") or []))
+    final_text_was_empty = not final_text
+    if final_text_was_empty:
+        logger.warning(
+            "agent completed with no visible assistant text session_id=%s model=%s",
+            session_id,
+            effective_model,
+        )
+        final_text = _EMPTY_MODEL_REPLY
     markers = _citation_markers(final_text)
     # turn_seq = 0-indexed turn number = (number of human messages) - 1.
     turn_seq = sum(1 for m in out["messages"] if m.type == "human") - 1
@@ -5563,7 +5570,12 @@ async def chat(
     # explicitly opted out of memory write for this turn). Per-turn
     # extraction was retired 2026-05-27 — see memory/extractor.py and
     # memory/sweeper.py for the rationale.
-    if not body.memory_incognito and body.message.strip() and final_text.strip():
+    if (
+        not final_text_was_empty
+        and not body.memory_incognito
+        and body.message.strip()
+        and final_text.strip()
+    ):
         from .memory.sweeper import enqueue_extraction_job
         _spawn(
             enqueue_extraction_job(session_id=session_id, member_id=member.id),
@@ -5589,6 +5601,28 @@ def _sse_event(payload: dict) -> str:
     """Format one SSE message. Multi-line payloads are JSON so we never
     have to worry about embedded newlines in the protocol."""
     return f"data: {json.dumps(payload)}\n\n"
+
+
+_EMPTY_MODEL_REPLY = (
+    "The model request completed, but the provider returned no visible text. "
+    "Try sending the request again, or switch to another model."
+)
+
+
+def _last_visible_ai_text(messages: list[Any]) -> str:
+    """Return the last non-empty assistant text from a graph snapshot.
+
+    Tool-call-only AI messages and tool outputs are internal protocol
+    messages. They must not become the visible assistant response, or the UI
+    can render a successful turn as silence.
+    """
+    for msg in reversed(messages):
+        if getattr(msg, "type", None) != "ai":
+            continue
+        text = extract_text(getattr(msg, "content", None)).strip()
+        if text:
+            return text
+    return ""
 
 
 _EXPLICIT_MCP_SLUGS = ("obsidian", "zotero", "notion")
@@ -5841,8 +5875,16 @@ async def chat_stream(
             snapshot = await app.state.graph.aget_state(config)
             messages = snapshot.values.get("messages", []) if snapshot else []
             retrieved = snapshot.values.get("retrieved", []) if snapshot else []
-            final_msg = messages[-1] if messages else None
-            final_text = extract_text(final_msg.content if final_msg else None)
+            final_text = _last_visible_ai_text(list(messages))
+            final_text_was_empty = not final_text
+            if final_text_was_empty:
+                logger.warning(
+                    "agent stream completed with no visible assistant text "
+                    "session_id=%s model=%s",
+                    session_id,
+                    effective_model,
+                )
+                final_text = _EMPTY_MODEL_REPLY
             markers = _citation_markers(final_text)
             turn_seq = sum(1 for m in messages if m.type == "human") - 1
 
@@ -5886,7 +5928,8 @@ async def chat_stream(
                 await conn.commit()
 
             if (
-                not body.memory_incognito
+                not final_text_was_empty
+                and not body.memory_incognito
                 and body.message.strip()
                 and final_text.strip()
             ):

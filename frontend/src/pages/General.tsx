@@ -41,6 +41,11 @@ import pdfWorkerSrc from 'pdfjs-dist/build/pdf.worker.min.mjs?url'
 // URL) this is a no-op.
 pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorkerSrc
 
+const EMPTY_ASSISTANT_REPLY =
+  'The model request completed, but no visible text came back. Try again, or switch models.'
+const INTERRUPTED_ASSISTANT_REPLY =
+  '\n\n[Stream interrupted before the final response finished.]'
+
 /** Client-side PDF → text. Used by the per-turn attachment flow in
  *  general chat: extract once, prepend into the next outgoing message,
  *  no project / no materials row. */
@@ -343,6 +348,9 @@ export function GeneralPage() {
       setMessages((prev) => [...prev, userMsg])
       const ac = new AbortController()
       abortRef.current = ac
+      let aiStarted = false
+      let reply = ''
+      let flushFrame: number | null = null
 
       try {
         if (!activeSid) {
@@ -359,10 +367,7 @@ export function GeneralPage() {
           next.set('s', sess.id)
           setSearchParams(next, { replace: true })
         }
-        let aiStarted = false
-        let reply = ''
         let turnSeq: number | undefined
-        let flushFrame: number | null = null
         const flushReply = () => {
           flushFrame = null
           if (!aiStarted) {
@@ -398,9 +403,10 @@ export function GeneralPage() {
             scheduleFlush()
           }
           if (event.type === 'done') {
-            if (!aiStarted && typeof event.final_text === 'string' && event.final_text) {
+            if (typeof event.final_text === 'string' && event.final_text) {
               reply = event.final_text
             }
+            if (!reply.trim()) reply = EMPTY_ASSISTANT_REPLY
             if (flushFrame != null) {
               window.cancelAnimationFrame(flushFrame)
               flushReply()
@@ -437,6 +443,26 @@ export function GeneralPage() {
         }
         if (firstSendSessionRef.current === activeSid) {
           firstSendSessionRef.current = null
+        }
+        if (flushFrame != null) {
+          window.cancelAnimationFrame(flushFrame)
+          flushFrame = null
+        }
+        if (aiStarted || reply.trim()) {
+          const content = reply.trim()
+            ? `${reply}${INTERRUPTED_ASSISTANT_REPLY}`
+            : EMPTY_ASSISTANT_REPLY
+          setMessages((prev) =>
+            prev.length > 0 && prev[prev.length - 1].role === 'ai'
+              ? prev.map((m, i) =>
+                  i === prev.length - 1 ? { ...m, content } : m,
+                )
+              : [...prev, { role: 'ai', content }],
+          )
+          if (err?.status !== 401) {
+            toast.warn(err?.message ?? 'Could not finish the response.')
+          }
+          return
         }
         // Roll back the optimistic user bubble on failure so the user
         // isn't looking at their unanswered words next to a toast.
