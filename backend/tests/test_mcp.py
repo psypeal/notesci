@@ -26,6 +26,7 @@ from httpx import ASGITransport, AsyncClient
 
 from notesci.agent.mcp_tools import (
     _extract_zotero_collection_keys,
+    _harden_zotero_tools,
     _resolve_zotero_collection_key,
     _tool_arg_names,
     _wrap_zotero_collection_items_tool,
@@ -966,3 +967,167 @@ async def test_zotero_collection_items_wrapper_accepts_key_aliases():
 
         assert "Alias routed paper" in result
         assert upstream.calls == [{"collection_key": "ABCD1234"}]
+
+
+async def test_zotero_collection_items_wrapper_expands_box_drawing_tree():
+    upstream = _FakeMcpTool(
+        [],
+        args={"collection_key": {}, "limit": {}},
+        name="zotero__zotero_get_collection_items",
+    )
+    collections = _FakeMcpTool(
+        """
+# Zotero Collections
+
+Parent (Key: ABCD1234)
+│   ├── Brain Aging (Key: EFGH5678)
+│   └── Methods (Key: IJKL9012)
+Other (Key: MNOP3456)
+""",
+        args={"limit": {}},
+        name="zotero__zotero_get_collections",
+    )
+
+    async def ainvoke(payload: dict):
+        upstream.calls.append(payload)
+        if payload["collection_key"] == "ABCD1234":
+            return []
+        if payload["collection_key"] == "EFGH5678":
+            return {"items": [{"title": "Windows-visible Zotero item"}]}
+        return []
+
+    upstream.ainvoke = ainvoke
+    wrapped = _wrap_zotero_collection_items_tool(
+        upstream,
+        search_tool=None,
+        collections_tool=collections,
+    )
+
+    result = await wrapped.ainvoke({"collection_name": "Parent"})
+
+    assert "Windows-visible Zotero item" in result
+    assert upstream.calls == [
+        {"collection_key": "ABCD1234", "limit": 50},
+        {"collection_key": "EFGH5678", "limit": 50},
+        {"collection_key": "IJKL9012", "limit": 50},
+    ]
+
+
+async def test_zotero_collection_items_wrapper_expands_structured_collection_tree():
+    upstream = _FakeMcpTool(
+        [],
+        args={"collection_key": {}, "limit": {}},
+        name="zotero__zotero_get_collection_items",
+    )
+    collections = _FakeMcpTool(
+        {
+            "collections": [
+                {
+                    "name": "Parent",
+                    "key": "ABCD1234",
+                    "children": [
+                        {"name": "Brain Aging", "key": "EFGH5678"},
+                    ],
+                }
+            ]
+        },
+        args={"limit": {}},
+        name="zotero__zotero_get_collections",
+    )
+
+    async def ainvoke(payload: dict):
+        upstream.calls.append(payload)
+        if payload["collection_key"] == "ABCD1234":
+            return {"items": []}
+        return {"items": [{"title": "Structured child collection item"}]}
+
+    upstream.ainvoke = ainvoke
+    wrapped = _wrap_zotero_collection_items_tool(
+        upstream,
+        search_tool=None,
+        collections_tool=collections,
+    )
+
+    result = await wrapped.ainvoke({"collection_name": "Parent"})
+
+    assert "Structured child collection item" in result
+    assert upstream.calls == [
+        {"collection_key": "ABCD1234", "limit": 50},
+        {"collection_key": "EFGH5678", "limit": 50},
+    ]
+
+
+async def test_harden_zotero_tools_wraps_variant_collection_item_tool():
+    upstream = _FakeMcpTool(
+        [{"title": "Variant schema paper"}],
+        args={"collection": {}, "limit": {}},
+        name="zotero__get_collection_items",
+    )
+    collections = _FakeMcpTool(
+        """
+# Zotero Collections
+
+- Brain Aging (Key: ABCD1234)
+""",
+        args={"limit": {}},
+        name="zotero__list_collections",
+    )
+    hardened = _harden_zotero_tools([upstream, collections])
+    wrapped = next(tool for tool in hardened if tool.name == "zotero__get_collection_items")
+
+    result = await wrapped.ainvoke({"collection_name": "Brain Aging"})
+
+    assert "Variant schema paper" in result
+    assert upstream.calls == [{"collection": "ABCD1234", "limit": 50}]
+
+
+async def test_harden_zotero_tools_wraps_description_only_collection_item_tool():
+    upstream = _FakeMcpTool(
+        [{"title": "Description routed Zotero paper"}],
+        args={"collection_id": {}, "limit": {}},
+        name="zotero__get_items",
+    )
+    upstream.description = "Get items in a specific Zotero collection."
+    collections = _FakeMcpTool(
+        """
+# Zotero Collections
+
+- Brain Aging (Key: ABCD1234)
+""",
+        args={"limit": {}},
+        name="zotero__get_collections",
+    )
+    hardened = _harden_zotero_tools([upstream, collections])
+    wrapped = next(tool for tool in hardened if tool.name == "zotero__get_items")
+
+    result = await wrapped.ainvoke({"collection_name": "Brain Aging"})
+
+    assert "Description routed Zotero paper" in result
+    assert upstream.calls == [{"collection_id": "ABCD1234", "limit": 50}]
+
+
+async def test_harden_zotero_tools_keeps_collection_listing_when_description_mentions_items():
+    upstream = _FakeMcpTool(
+        [{"title": "Listing tool still resolved paper"}],
+        args={"collection_id": {}, "limit": {}},
+        name="zotero__get_items",
+    )
+    upstream.description = "Get items in a specific Zotero collection."
+    collections = _FakeMcpTool(
+        """
+# Zotero Collections
+
+- Brain Aging (Key: ABCD1234)
+""",
+        args={"limit": {}},
+        name="zotero__get_collections",
+    )
+    collections.description = "List collections so users can choose collection items."
+    hardened = _harden_zotero_tools([upstream, collections])
+    wrapped = next(tool for tool in hardened if tool.name == "zotero__get_items")
+
+    result = await wrapped.ainvoke({"collection_name": "Brain Aging"})
+
+    assert "Listing tool still resolved paper" in result
+    assert collections.calls == [{"limit": 5000}]
+    assert upstream.calls == [{"collection_id": "ABCD1234", "limit": 50}]

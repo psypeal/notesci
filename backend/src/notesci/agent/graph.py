@@ -431,7 +431,7 @@ def _has_relevant_vector_signal(chunks: list[RetrievedChunk]) -> bool:
 
 
 def _looks_like_web_tool(tool: BaseTool) -> bool:
-    name = (tool.name or "").lower()
+    name = f"{tool.name or ''} {getattr(tool, 'description', '') or ''}".lower()
     desc = (getattr(tool, "description", "") or "").lower()
     unprefixed_name = name.split("__", 1)[1] if "__" in name else name
     # Many MCP servers expose lots of search-like tools (repo search,
@@ -534,10 +534,15 @@ def _web_tool_arg_variants(tool: BaseTool, query: str, limit: int) -> tuple[dict
         if filtered not in variants:
             variants.append(filtered)
 
-    if "zotero" in name and "get_collection_items" in name:
+    if (
+        "zotero" in name
+        and "collection" in name
+        and any(token in name for token in ("item", "items", "paper", "papers", "reference"))
+    ):
         for ref_key in ("collection_name", "collection", "query", "name", "title"):
             add({ref_key: query, "limit": limit})
-        add({"collection_key": query, "limit": limit})
+        for key_field in ("collection_key", "collectionKey", "collection_id", "collectionId", "key", "id"):
+            add({key_field: query, "limit": limit})
 
     for query_key in ("query", "q", "search_query", "input"):
         if query_key in arg_names:
@@ -2117,12 +2122,39 @@ def _format_mcp_tool_status(
             )
         )
         if collection_item_intent:
+            item_tools = [
+                name
+                for name in mcp_tool_names
+                if (
+                    "zotero" in name.lower()
+                    and "collection" in name.lower()
+                    and any(
+                        token in name.lower()
+                        for token in ("item", "items", "paper", "papers", "reference")
+                    )
+                )
+            ]
+            collection_tools = [
+                name
+                for name in mcp_tool_names
+                if (
+                    "zotero" in name.lower()
+                    and "collection" in name.lower()
+                    and "item" not in name.lower()
+                    and any(token in name.lower() for token in ("get", "list", "browse", "search", "find"))
+                )
+            ]
+            item_tool_hint = item_tools[0] if item_tools else "the Zotero collection-items tool"
+            collection_tool_hint = (
+                " or ".join(collection_tools[:2])
+                if collection_tools
+                else "zotero__zotero_search_collections or zotero__zotero_get_collections"
+            )
             joined = (
                 f"{joined} | Zotero collection workflow: resolve the "
-                "8-character collection key first with "
-                "zotero__zotero_search_collections or "
-                "zotero__zotero_get_collections, then call "
-                "zotero__zotero_get_collection_items(collection_key=...). "
+                f"8-character collection key first with {collection_tool_hint}, "
+                f"then call {item_tool_hint} with collection_key, key, "
+                "collection_id, collectionId, or collection_name. "
                 "Do not pass a human-readable collection name as collection_key. "
                 "If the collection is in another Zotero library or group, call "
                 "zotero__zotero_list_libraries and "

@@ -86,7 +86,7 @@ _ZOTERO_COLLECTION_SEARCH_RE = re.compile(
     r"##\s+\d+\.\s*(?P<name>[^\n]+)\s+\*\*Key:\*\*\s*`?(?P<key>[A-Za-z0-9]{8})`?"
 )
 _ZOTERO_COLLECTION_LOOSE_LINE_RE = re.compile(
-    r"^\s*(?:[-*]\s*|[├└│─]+\s*)?(?!\*\*)"
+    r"^\s*(?:[-*]\s*|(?:(?:[│|]\s*)*(?:[├└]\s*[─-]+\s*)?))?(?!\*\*)"
     r"(?P<name>[^\n()]{1,180}?)\s*"
     r"(?:"
     r"\((?:Key:\s*)?`?(?P<key_a>[A-Za-z0-9]{8})`?\)"
@@ -341,13 +341,20 @@ def _normalize_zotero_collection_name(text: str) -> str:
     return " ".join(str(text or "").casefold().split())
 
 
+def _clean_zotero_collection_name(text: object) -> str:
+    cleaned = str(text or "").strip()
+    cleaned = re.sub(r"^[\s>*`+\-*│|├└┬┴┼─—–]+", "", cleaned)
+    cleaned = re.sub(r"^[├└]\s*[─-]+\s*", "", cleaned)
+    return cleaned.strip(" *`")
+
+
 def _zotero_match_name_key(match: re.Match[str]) -> tuple[str, str] | None:
     groups = match.groupdict()
     key = groups.get("key") or groups.get("key_a") or groups.get("key_b")
-    name = groups.get("name")
+    name = _clean_zotero_collection_name(groups.get("name"))
     if not key or not name:
         return None
-    return name.strip(), key.upper()
+    return name, key.upper()
 
 
 def _unique_zotero_collection_pairs(
@@ -364,7 +371,91 @@ def _unique_zotero_collection_pairs(
     return out
 
 
+def _zotero_collection_line_depth(line: str, name_start: int) -> int:
+    """Return a stable hierarchy depth for Markdown and box-drawing trees."""
+    prefix = line[: max(0, name_start)].replace("\t", "    ")
+    prefix = prefix.replace("**", "").replace("`", "")
+    return len(prefix)
+
+
+def _zotero_collection_value(source: dict[str, Any], *keys: str) -> object:
+    for key in keys:
+        value = source.get(key)
+        if value not in (None, ""):
+            return value
+    nested = source.get("data")
+    if isinstance(nested, dict):
+        for key in keys:
+            value = nested.get(key)
+            if value not in (None, ""):
+                return value
+    return None
+
+
+def _zotero_structured_collection_entries(
+    value: object,
+    *,
+    depth: int = 0,
+) -> list[tuple[int, str, str]]:
+    entries: list[tuple[int, str, str]] = []
+    if isinstance(value, list):
+        for item in value:
+            entries.extend(_zotero_structured_collection_entries(item, depth=depth))
+        return entries
+    if not isinstance(value, dict):
+        return entries
+
+    key = _zotero_collection_value(
+        value,
+        "collection_key",
+        "collectionKey",
+        "collection_id",
+        "collectionId",
+        "key",
+        "id",
+    )
+    name = _zotero_collection_value(
+        value,
+        "name",
+        "title",
+        "collection_name",
+        "collectionName",
+    )
+    emitted_self = bool(key and name and _ZOTERO_KEY_RE.fullmatch(str(key).strip()))
+    if emitted_self:
+        entries.append((depth, _clean_zotero_collection_name(name), str(key).upper()))
+
+    for child_key in (
+        "children",
+        "childCollections",
+        "child_collections",
+        "collections",
+        "subcollections",
+        "subCollections",
+        "items",
+        "results",
+        "data",
+    ):
+        if child_key == "data" and emitted_self:
+            continue
+        child = value.get(child_key)
+        if child is value:
+            continue
+        if isinstance(child, (list, dict)):
+            entries.extend(
+                _zotero_structured_collection_entries(child, depth=depth + 2)
+            )
+    return entries
+
+
 def _zotero_collection_tree_entries(text: object) -> list[tuple[int, str, str]]:
+    text_blocks = _zotero_text_block_payload(text)
+    if text_blocks is not None:
+        text = text_blocks
+    structured = _zotero_structured_collection_entries(text)
+    if structured:
+        return structured
+
     entries: list[tuple[int, str, str]] = []
     for line in str(text or "").splitlines():
         matches = [
@@ -372,15 +463,19 @@ def _zotero_collection_tree_entries(text: object) -> list[tuple[int, str, str]]:
             *_ZOTERO_COLLECTION_LINE_RE.finditer(line),
             *_ZOTERO_COLLECTION_LOOSE_LINE_RE.finditer(line),
         ]
-        pair = next((p for p in (_zotero_match_name_key(m) for m in matches) if p), None)
+        best: tuple[tuple[str, str], int] | None = None
+        for match in matches:
+            pair = _zotero_match_name_key(match)
+            if pair is None:
+                continue
+            best = (pair, _zotero_collection_line_depth(line, match.start("name")))
+            break
+        if best is None:
+            continue
+        pair, indent = best
         if pair is None:
             continue
         name, key = pair
-        # Leading spaces are enough for the current 54yyyu/zotero-mcp
-        # markdown tree. Preserve this as an integer depth so parent
-        # collections can fall back to child collections when Zotero has
-        # only subcollection items.
-        indent = len(line) - len(line.lstrip(" \t"))
         entries.append((indent, name, key))
     return entries
 
@@ -389,7 +484,7 @@ def _zotero_descendant_collections(
     collection_tree: object,
     parent_key: str,
     *,
-    limit: int = 12,
+    limit: int = 100,
 ) -> list[tuple[str, str]]:
     entries = _zotero_collection_tree_entries(collection_tree)
     for idx, (indent, _name, key) in enumerate(entries):
@@ -417,13 +512,14 @@ def _zotero_collection_matches_for_name(
     wanted = _normalize_zotero_collection_name(collection_name)
     if not wanted:
         return []
-    raw = str(text or "")
-    matches = [
-        *_ZOTERO_COLLECTION_TREE_RE.finditer(raw),
-        *_ZOTERO_COLLECTION_LINE_RE.finditer(raw),
-        *_ZOTERO_COLLECTION_LOOSE_LINE_RE.finditer(raw),
-    ]
-    pairs = _unique_zotero_collection_pairs(matches)
+    pairs: list[tuple[str, str]] = []
+    seen: set[tuple[str, str]] = set()
+    for _depth, name, key in _zotero_collection_tree_entries(text):
+        pair = (name, key)
+        if pair in seen:
+            continue
+        seen.add(pair)
+        pairs.append(pair)
     exact = [
         (name, key)
         for name, key in pairs
@@ -477,6 +573,7 @@ def _zotero_collection_key_arg_name(tool: BaseTool) -> str:
         "collectionKey",
         "collection_id",
         "collectionId",
+        "collection",
         "key",
         "id",
     ):
@@ -843,11 +940,39 @@ def _wrap_zotero_collection_items_tool(
             collection_tree = await _invoke_mcp_tool(collections_tool, collection_payload)
         except Exception as exc:
             log.warning("zotero child collection lookup failed for %s: %s", resolved_key, exc)
-            return result
+            return "\n\n".join(
+                [
+                    _zotero_format_tool_result(result),
+                    "## Zotero collection item lookup diagnostics",
+                    f"- Resolved collection key: {resolved_key}",
+                    f"- Child collection scan failed: {exc}",
+                    (
+                        "The requested collection returned no direct items, and Notesci "
+                        "could not inspect child collections. If Zotero shows items in "
+                        "this collection, first call zotero_list_libraries and "
+                        "zotero_switch_library when the collection belongs to another "
+                        "local library or group."
+                    ),
+                ]
+            )
 
         descendants = _zotero_descendant_collections(collection_tree, resolved_key)
         if not descendants:
-            return _zotero_format_tool_result(result)
+            return "\n\n".join(
+                [
+                    _zotero_format_tool_result(result),
+                    "## Zotero collection item lookup diagnostics",
+                    f"- Resolved collection key: {resolved_key}",
+                    "- No child collections were found under this key.",
+                    (
+                        "The requested collection returned no direct items. If the "
+                        "Zotero desktop UI shows items here, the MCP server may be "
+                        "pointing at a different Zotero library/group. Call "
+                        "zotero_list_libraries, switch to the matching library, then "
+                        "retry this collection."
+                    ),
+                ]
+            )
         child_scan_limit = _zotero_positive_int(
             max_child_collections,
             default=25,
@@ -888,10 +1013,19 @@ def _wrap_zotero_collection_items_tool(
                     _zotero_format_tool_result(result),
                     "## Child collections checked",
                     checked,
+                    "## Zotero collection item lookup diagnostics",
+                    f"- Resolved collection key: {resolved_key}",
+                    (
+                        f"- Checked {len(scanned_descendants)} child collections "
+                        f"out of {len(descendants)} discovered descendants."
+                    ),
                     (
                         "No direct items were returned from the parent or checked "
                         "child collections. Ask for a specific child collection key "
-                        "to browse deeper."
+                        "to browse deeper. If Zotero shows items in this collection "
+                        "on Windows, call zotero_list_libraries and zotero_switch_library "
+                        "before retrying; the MCP server may be scoped to another "
+                        "local library or group."
                     ),
                 ]
             )
@@ -933,23 +1067,95 @@ def _wrap_zotero_collection_items_tool(
     )
 
 
+def _zotero_original_tool_name(tool: BaseTool) -> str:
+    name = getattr(tool, "name", "") or ""
+    return name.split("__", 1)[1] if "__" in name else name
+
+
+def _zotero_tool_search_text(tool: BaseTool) -> str:
+    return " ".join(
+        part
+        for part in (
+            _zotero_original_tool_name(tool),
+            getattr(tool, "description", "") or "",
+        )
+        if part
+    )
+
+
+def _zotero_tool_name_key(name: str) -> str:
+    return str(name or "").casefold().replace("-", "_")
+
+
+def _is_zotero_collection_items_tool_name(name: str) -> bool:
+    key = _zotero_tool_name_key(name)
+    if "collection" not in key:
+        return False
+    if not any(token in key for token in ("item", "items", "paper", "papers", "reference")):
+        return False
+    return not any(token in key for token in ("create", "add", "delete", "remove", "update"))
+
+
+def _is_zotero_collection_listing_tool_name(name: str) -> bool:
+    key = _zotero_tool_name_key(name)
+    return (
+        "collection" in key
+        and "item" not in key
+        and any(token in key for token in ("get", "list", "browse"))
+    )
+
+
+def _is_zotero_collection_search_tool_name(name: str) -> bool:
+    key = _zotero_tool_name_key(name)
+    return "collection" in key and any(token in key for token in ("search", "find"))
+
+
 def _harden_zotero_tools(tools: list[BaseTool]) -> list[BaseTool]:
     by_original: dict[str, BaseTool] = {}
     for tool in tools:
-        original = tool.name.split("__", 1)[1] if "__" in tool.name else tool.name
+        original = _zotero_original_tool_name(tool)
         by_original[original] = tool
 
-    collection_items = by_original.get("zotero_get_collection_items")
-    if collection_items is None:
+    collection_item_tools = [
+        tool
+        for tool in tools
+        if _is_zotero_collection_items_tool_name(_zotero_tool_search_text(tool))
+    ]
+    if not collection_item_tools:
         return tools
 
-    wrapped_collection_items = _wrap_zotero_collection_items_tool(
-        collection_items,
-        by_original.get("zotero_search_collections"),
-        by_original.get("zotero_get_collections"),
+    search_tool = by_original.get("zotero_search_collections") or next(
+        (
+            tool
+            for tool in tools
+            if (
+                _is_zotero_collection_search_tool_name(_zotero_original_tool_name(tool))
+                or _is_zotero_collection_search_tool_name(_zotero_tool_search_text(tool))
+            )
+        ),
+        None,
     )
+    collections_tool = by_original.get("zotero_get_collections") or next(
+        (
+            tool
+            for tool in tools
+            if (
+                _is_zotero_collection_listing_tool_name(_zotero_original_tool_name(tool))
+                or _is_zotero_collection_listing_tool_name(_zotero_tool_search_text(tool))
+            )
+        ),
+        None,
+    )
+    wrapped_by_id = {
+        id(tool): _wrap_zotero_collection_items_tool(
+            tool,
+            search_tool,
+            collections_tool,
+        )
+        for tool in collection_item_tools
+    }
     return [
-        wrapped_collection_items if tool is collection_items else tool
+        wrapped_by_id.get(id(tool), tool)
         for tool in tools
     ]
 
