@@ -184,7 +184,7 @@ from .email_sender import (
     reset_password_email,
     verify_email_email,
 )
-from .ingest import extract_pdf_text, fetch_and_extract_url, ingest_text
+from .ingest import extract_pdf_text, fetch_and_extract_url, fetch_url_bytes, ingest_text
 from .agent.embeddings import (
     EMBEDDING_DIM,
     apply_custom_embedding_config,
@@ -678,6 +678,66 @@ class ExternalPreviewOut(BaseModel):
     url: str
     title: str | None = None
     content: str
+
+
+class ExternalFetchIn(BaseModel):
+    url: str = Field(..., min_length=8, max_length=2048)
+
+
+def _pmc_article_url_from_pdf(url: str) -> str | None:
+    try:
+        parsed = urlparse(url)
+    except Exception:
+        return None
+    host = (parsed.hostname or "").lower()
+    if host not in {"pmc.ncbi.nlm.nih.gov", "www.ncbi.nlm.nih.gov"}:
+        return None
+    parts = [part for part in parsed.path.split("/") if part]
+    if len(parts) < 4 or parts[0].lower() != "articles":
+        return None
+    pmcid = parts[1]
+    if not re.fullmatch(r"PMC\d+", pmcid, flags=re.IGNORECASE):
+        return None
+    if parts[2].lower() != "pdf":
+        return None
+    return f"{parsed.scheme or 'https'}://{parsed.netloc}/articles/{pmcid}/"
+
+
+def _looks_like_download_challenge(
+    content: str,
+    content_type: str | None = None,
+) -> bool:
+    ct = (content_type or "").casefold()
+    if "application/pdf" in ct:
+        return False
+    text = " ".join(str(content or "").casefold().split())
+    if not text:
+        return False
+    challenge_markers = (
+        "preparing to download",
+        "download will begin shortly",
+        "vulnerability disclosure",
+        "security check",
+        "checking your browser",
+        "just a moment",
+        "enable javascript and cookies",
+        "cf-browser-verification",
+        "__cf_chl",
+    )
+    return any(marker in text for marker in challenge_markers)
+
+
+def _looks_like_direct_pdf_url(url: str) -> bool:
+    try:
+        parsed = urlparse(url)
+    except Exception:
+        return False
+    path = parsed.path.casefold()
+    return path.endswith(".pdf") or "/pdf/" in path or "articlepdf" in path
+
+
+def _content_type_is_pdf(content_type: str | None) -> bool:
+    return "application/pdf" in (content_type or "").casefold()
 
 
 def _citation_markers(text: str) -> list[int]:
@@ -6540,8 +6600,9 @@ async def external_preview(
     # create a material, chunk, embedding, or citation row; the user must
     # explicitly choose "Add to project sources" after reviewing.
     await rate_enforce(request, endpoint="external_preview", limit=120)
+    preview_url = _pmc_article_url_from_pdf(body.url) or body.url
     try:
-        ext = await fetch_and_extract_url(body.url)
+        ext = await fetch_and_extract_url(preview_url)
     except ValueError as e:
         raise HTTPException(
             status_code=400,
@@ -6561,12 +6622,93 @@ async def external_preview(
         or getattr(ext, "markdown", None)
         or ""
     ).strip()
+    if (
+        preview_url == body.url
+        and (pmc_article_url := _pmc_article_url_from_pdf(body.url))
+        and (len(content) < 500 or _looks_like_download_challenge(content))
+    ):
+        try:
+            ext = await fetch_and_extract_url(pmc_article_url)
+            preview_url = pmc_article_url
+            title = getattr(ext, "title", None)
+            content = (
+                getattr(ext, "text", None)
+                or getattr(ext, "content", None)
+                or getattr(ext, "markdown", None)
+                or ""
+            ).strip()
+        except Exception:
+            logger.info("PMC article fallback preview failed", exc_info=True)
     if not content:
         raise HTTPException(
             status_code=422,
             detail=_err("preview_empty", "That source did not expose readable text."),
         )
-    return ExternalPreviewOut(url=body.url, title=title, content=content[:200_000])
+    if _looks_like_download_challenge(content):
+        raise HTTPException(
+            status_code=422,
+            detail=_err(
+                "preview_blocked",
+                "That source exposed a download or publisher challenge page.",
+            ),
+        )
+    return ExternalPreviewOut(url=preview_url, title=title, content=content[:200_000])
+
+
+@app.post("/external/fetch")
+async def external_fetch(
+    body: ExternalFetchIn,
+    request: Request,
+    member: CurrentMember = Depends(current_member),
+) -> Response:
+    await rate_enforce(request, endpoint="external_fetch", limit=60)
+    try:
+        data, content_type, final_url = await fetch_url_bytes(
+            body.url,
+            timeout_seconds=30.0,
+            max_bytes=64 * 1024 * 1024,
+        )
+    except ValueError as e:
+        raise HTTPException(
+            status_code=400,
+            detail=_err("external_fetch_invalid", "We couldn't process that URL."),
+        ) from e
+    except Exception as e:
+        logger.warning("external PDF fetch failed", exc_info=True)
+        raise HTTPException(
+            status_code=502,
+            detail=_err("external_fetch_failed", "We couldn't fetch that PDF."),
+        ) from e
+    if not data:
+        raise HTTPException(
+            status_code=422,
+            detail=_err("external_fetch_empty", "That PDF response was empty."),
+        )
+    head = data[:1024]
+    looks_pdf = (
+        data.startswith(b"%PDF-")
+        or _content_type_is_pdf(content_type)
+        or _looks_like_direct_pdf_url(body.url)
+        or _looks_like_direct_pdf_url(final_url)
+    )
+    if not looks_pdf or (
+        not data.startswith(b"%PDF-")
+        and "text/html" in (content_type or "").casefold()
+    ):
+        sample = head.decode("utf-8", errors="ignore")
+        if _looks_like_download_challenge(sample, content_type):
+            detail = "The URL returned a publisher download or security page, not a PDF."
+        else:
+            detail = "The URL did not return PDF bytes."
+        raise HTTPException(
+            status_code=415,
+            detail=_err("external_fetch_not_pdf", detail),
+        )
+    return Response(
+        content=data,
+        media_type="application/pdf",
+        headers={"X-Notesci-Final-Url": final_url},
+    )
 
 
 @app.post("/materials/ingest-url", response_model=IngestOut)

@@ -34,8 +34,10 @@ import sys
 import time
 from dataclasses import dataclass
 from typing import Any
+from urllib.parse import quote
 from uuid import UUID
 
+import httpx
 import psycopg
 from langchain_core.tools import BaseTool, StructuredTool
 from langchain_mcp_adapters.client import MultiServerMCPClient
@@ -65,6 +67,28 @@ _NODE_MCP_MANAGED_NODE_PACKAGE = {
 _LEGACY_SCIHUB_GIT_SOURCES = {
     "git+https://github.com/riichard/sci-hub-mcp-server",
     "git+https://github.com/riichard/Sci-Hub-MCP-Server",
+}
+_SCIHUB_ARCHIVE_SPEC = (
+    "sci-hub-mcp-server @ "
+    "https://github.com/riichard/Sci-Hub-MCP-Server/archive/refs/heads/main.zip"
+)
+_SCIHUB_ARGS = [
+    "--from",
+    _SCIHUB_ARCHIVE_SPEC,
+    "sci-hub-mcp",
+    "--transport",
+    "stdio",
+]
+_SCIHUB_ENV_DEFAULTS = {
+    "PYTHONUTF8": "1",
+    "SCIHUB_HTTP_CLIENT": "requests",
+    "SCIHUB_INCLUDE_DEFAULT_MIRRORS": "true",
+    "SCIHUB_BASE_URLS": (
+        "https://sci-hub.se,https://sci-hub.st,"
+        "https://sci-hub.ru,https://sci-hub.ren,"
+        "https://sci-hub.mksa.top,https://sci-hub.ee"
+    ),
+    "SCIHUB_TIMEOUT_SECONDS": "12",
 }
 
 
@@ -370,22 +394,45 @@ def _prepare_npx_node_runtime(
     )
 
 
-def _normalize_uvx_args(args: list[str], env: dict[str, str] | None = None) -> list[str]:
-    lowered = {str(arg).strip().lower() for arg in args}
-    if any(
-        any(arg.startswith(source.lower()) for source in _LEGACY_SCIHUB_GIT_SOURCES)
+def _apply_scihub_env_defaults(env: dict[str, str] | None) -> None:
+    if env is None:
+        return
+    for key, value in _SCIHUB_ENV_DEFAULTS.items():
+        env.setdefault(key, value)
+
+
+def _looks_like_scihub_uvx_args(args: list[str]) -> bool:
+    lowered = [str(arg).strip().lower() for arg in args]
+    return any(
+        "sci-hub-mcp-server" in arg
+        or arg == "sci-hub-mcp"
+        or any(arg.startswith(source.lower()) for source in _LEGACY_SCIHUB_GIT_SOURCES)
         for arg in lowered
-    ):
-        log.info(
-            "Rewriting legacy Sci-Hub MCP Git uvx launch to PyPI package "
-            "sci-hub-mcp-server."
-        )
-        if env is not None:
-            env.setdefault("PYTHONUTF8", "1")
-        return ["--from", "sci-hub-mcp-server", "sci-hub-mcp-server"]
-    if "sci-hub-mcp-server" in lowered and env is not None:
-        env.setdefault("PYTHONUTF8", "1")
-    return args
+    )
+
+
+def _scihub_uvx_args_are_current(args: list[str]) -> bool:
+    lowered = [str(arg).strip().lower() for arg in args]
+    return (
+        "--from" in lowered
+        and _SCIHUB_ARCHIVE_SPEC.lower() in lowered
+        and "sci-hub-mcp" in lowered
+        and "--transport" in lowered
+        and "stdio" in lowered
+    )
+
+
+def _normalize_uvx_args(args: list[str], env: dict[str, str] | None = None) -> list[str]:
+    if not _looks_like_scihub_uvx_args(args):
+        return args
+    _apply_scihub_env_defaults(env)
+    if _scihub_uvx_args_are_current(args):
+        return args
+    log.info(
+        "Rewriting Sci-Hub MCP uvx launch to GitHub archive package "
+        "with console script sci-hub-mcp."
+    )
+    return list(_SCIHUB_ARGS)
 
 
 def _resolve_stdio_command(command: str, args: list[str], env: dict[str, str]) -> tuple[str, list[str]]:
@@ -480,9 +527,9 @@ def _format_mcp_load_error(slug: str, exc: Exception) -> str:
         )
     if normalized == "scihub":
         return (
-            "Sci-Hub failed to start. notesci uses the PyPI "
-            "sci-hub-mcp-server package and avoids the legacy Git-backed "
-            "launcher; if this persists, check Python package downloads, "
+            "Sci-Hub failed to start. notesci uses the upstream "
+            "Sci-Hub-MCP-Server GitHub archive with the sci-hub-mcp "
+            "console script; if this persists, check Python package downloads, "
             "network policy, and Sci-Hub access in your jurisdiction. Raw "
             f"error: {raw}"
         )
@@ -1380,6 +1427,211 @@ def _harden_zotero_tools(tools: list[BaseTool]) -> list[BaseTool]:
     ]
 
 
+def _scihub_original_tool_name(tool: BaseTool) -> str:
+    name = getattr(tool, "name", "") or ""
+    if "__" in name:
+        return name.split("__", 1)[1]
+    if name.startswith("scihub_"):
+        return name.removeprefix("scihub_")
+    return name
+
+
+def _is_scihub_search_tool_name(name: str) -> bool:
+    normalized = str(name or "").strip().lower()
+    return normalized.endswith("search_scihub_by_doi") or normalized.endswith(
+        "search_scihub_by_title"
+    )
+
+
+def _scihub_payload_from_result(result: object) -> dict[str, Any] | None:
+    if isinstance(result, dict):
+        return result
+    text_blocks = _zotero_text_block_payload(result)
+    raw = text_blocks if text_blocks is not None else result
+    if not isinstance(raw, str):
+        return None
+    try:
+        parsed = json.loads(raw)
+    except Exception:
+        return None
+    return parsed if isinstance(parsed, dict) else None
+
+
+def _scihub_value(source: object, *keys: str) -> str | None:
+    if not isinstance(source, dict):
+        return None
+    lowered = {str(k).casefold(): v for k, v in source.items()}
+    for key in keys:
+        value = source.get(key)
+        if value not in (None, ""):
+            return str(value).strip()
+        value = lowered.get(key.casefold())
+        if value not in (None, ""):
+            return str(value).strip()
+    nested = source.get("metadata")
+    if isinstance(nested, dict):
+        found = _scihub_value(nested, *keys)
+        if found:
+            return found
+    return None
+
+
+def _scihub_result_pdf_url(payload: dict[str, Any] | None) -> str | None:
+    if not isinstance(payload, dict):
+        return None
+    return _scihub_value(payload, "pdf_url", "pdfUrl", "url_for_pdf", "download_url")
+
+
+def _scihub_extract_doi(args: dict[str, Any], payload: dict[str, Any] | None) -> str | None:
+    for source in (args, payload or {}):
+        value = _scihub_value(source, "doi", "DOI")
+        if value:
+            return value.strip().removeprefix("doi:").strip()
+    return None
+
+
+def _scihub_needs_open_access_fallback(result: object, payload: dict[str, Any] | None) -> bool:
+    if _scihub_result_pdf_url(payload):
+        return False
+    status = (_scihub_value(payload, "status") or "").casefold()
+    error = (_scihub_value(payload, "error", "message") or "").casefold()
+    raw = str(result or "").casefold()
+    return (
+        status in {"not_found", "metadata_only", "error", "failed"}
+        or "failed to resolve pdf url" in error
+        or "failed to resolve pdf url" in raw
+        or "no pdf" in error
+    )
+
+
+async def _scihub_open_access_fallback(doi: str) -> dict[str, Any] | None:
+    clean = doi.strip()
+    if not clean:
+        return None
+    headers = {"Accept": "application/json", "User-Agent": "notesci/1.0"}
+    timeout = httpx.Timeout(12.0)
+    async with httpx.AsyncClient(timeout=timeout, headers=headers) as client:
+        try:
+            r = await client.get(
+                f"https://api.unpaywall.org/v2/{quote(clean, safe='')}",
+                params={"email": "contact@notesci.local"},
+            )
+            if r.status_code < 400:
+                data = r.json()
+                locations: list[dict[str, Any]] = []
+                best = data.get("best_oa_location")
+                if isinstance(best, dict):
+                    locations.append(best)
+                raw_locations = data.get("oa_locations")
+                if isinstance(raw_locations, list):
+                    locations.extend(loc for loc in raw_locations if isinstance(loc, dict))
+                for loc in locations:
+                    pdf_url = loc.get("url_for_pdf")
+                    if not pdf_url:
+                        continue
+                    return {
+                        "doi": clean,
+                        "pdf_url": pdf_url,
+                        "status": "success",
+                        "source": "open_access_fallback",
+                        "fallback_provider": "unpaywall",
+                        "license": loc.get("license") or data.get("license"),
+                        "landing_page": loc.get("url") or data.get("doi_url"),
+                        "note": (
+                            "Sci-Hub mirrors did not resolve a PDF, but Notesci "
+                            "found an open-access copy."
+                        ),
+                    }
+        except Exception as exc:
+            log.info("Unpaywall fallback failed for DOI %s: %s", clean, exc)
+
+        try:
+            r = await client.get(
+                "https://www.ebi.ac.uk/europepmc/webservices/rest/search",
+                params={
+                    "query": f'DOI:"{clean}"',
+                    "format": "json",
+                    "pageSize": "1",
+                },
+            )
+            if r.status_code >= 400:
+                return None
+            data = r.json()
+            results = ((data.get("resultList") or {}).get("result") or [])
+            if not results:
+                return None
+            record = results[0]
+            if not isinstance(record, dict):
+                return None
+            pmcid = str(record.get("pmcid") or "").strip()
+            has_pdf = str(record.get("hasPDF") or "").strip().upper() == "Y"
+            if pmcid and has_pdf:
+                return {
+                    "doi": clean,
+                    "pdf_url": f"https://pmc.ncbi.nlm.nih.gov/articles/{pmcid}/pdf/",
+                    "status": "success",
+                    "source": "open_access_fallback",
+                    "fallback_provider": "europe_pmc",
+                    "license": record.get("license"),
+                    "landing_page": f"https://pmc.ncbi.nlm.nih.gov/articles/{pmcid}/",
+                    "note": (
+                        "Sci-Hub mirrors did not resolve a PDF, but Notesci "
+                        "found an open-access copy."
+                    ),
+                }
+        except Exception as exc:
+            log.info("Europe PMC fallback failed for DOI %s: %s", clean, exc)
+    return None
+
+
+def _wrap_scihub_search_tool(tool: BaseTool) -> BaseTool:
+    async def scihub_search_with_open_access_fallback(
+        doi: str = "",
+        DOI: str = "",
+        title: str = "",
+        query: str = "",
+    ) -> Any:
+        payload: dict[str, Any] = {}
+        original_name = _scihub_original_tool_name(tool)
+        if "doi" in original_name.casefold():
+            payload["doi"] = doi or DOI or query or title
+        else:
+            payload["title"] = title or query or doi or DOI
+        result = await _invoke_mcp_tool(tool, payload)
+        parsed = _scihub_payload_from_result(result)
+        if not _scihub_needs_open_access_fallback(result, parsed):
+            return result
+        resolved_doi = _scihub_extract_doi(payload, parsed)
+        if not resolved_doi:
+            return result
+        fallback = await _scihub_open_access_fallback(resolved_doi)
+        return fallback or result
+
+    description = (
+        (getattr(tool, "description", "") or "").strip()
+        + "\n\nNotesci calls the upstream Sci-Hub MCP tool first. If Sci-Hub "
+        "mirrors cannot resolve a PDF URL, Notesci checks legal open-access "
+        "fallbacks through Unpaywall and Europe PMC for the same DOI."
+    ).strip()
+    return StructuredTool.from_function(
+        coroutine=scihub_search_with_open_access_fallback,
+        name=tool.name,
+        description=description,
+        return_direct=getattr(tool, "return_direct", False),
+    )
+
+
+def _harden_scihub_tools(tools: list[BaseTool]) -> list[BaseTool]:
+    wrapped: dict[int, BaseTool] = {
+        id(tool): _wrap_scihub_search_tool(tool)
+        for tool in tools
+        if _is_scihub_search_tool_name(_scihub_original_tool_name(tool))
+    }
+    if not wrapped:
+        return tools
+    return [wrapped.get(id(tool), tool) for tool in tools]
+
+
 async def load_workspace_mcp_tools(
     conn: psycopg.AsyncConnection,
     workspace_id: UUID,
@@ -1489,6 +1741,8 @@ async def load_workspace_mcp_tools(
             allowed_tools.append(tool)
         if str(slug).lower() == "zotero":
             allowed_tools = _harden_zotero_tools(allowed_tools)
+        if str(slug).lower() == "scihub":
+            allowed_tools = _harden_scihub_tools(allowed_tools)
         for tool in allowed_tools:
             out_tools.append(tool)
             tool_to_server[tool.name] = server_id

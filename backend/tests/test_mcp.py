@@ -28,6 +28,7 @@ from notesci.agent import mcp_tools as mcp_tools_module
 from notesci.agent.mcp_tools import (
     _extract_zotero_collection_keys,
     _format_mcp_load_error,
+    _harden_scihub_tools,
     _harden_zotero_tools,
     _resolve_zotero_collection_key,
     _resolve_stdio_command,
@@ -45,6 +46,8 @@ from notesci.db import get_conn
 from notesci.main import (
     app,
     _filter_mcp_tools_for_turn,
+    _looks_like_download_challenge,
+    _pmc_article_url_from_pdf,
     _requested_mcp_slugs_for_turn,
 )
 
@@ -1221,8 +1224,42 @@ def test_research_mcp_load_errors_are_actionable():
 
     assert "managed Node 20" in paper
     assert "npm ETIMEDOUT" in paper
-    assert "sci-hub-mcp-server" in scihub
+    assert "sci-hub-mcp" in scihub
     assert "uv download failed" in scihub
+
+
+async def test_scihub_wrapper_uses_open_access_fallback_when_mirrors_miss(monkeypatch):
+    upstream = _FakeMcpTool(
+        '{"status":"not_found","doi":"10.1016/j.jhlto.2024.100152",'
+        '"error":"Failed to resolve PDF URL from configured mirrors."}',
+        args={"doi": {}},
+        name="scihub__search_scihub_by_doi",
+    )
+    calls: list[str] = []
+
+    async def fake_fallback(doi: str):
+        calls.append(doi)
+        return {
+            "doi": doi,
+            "pdf_url": "https://pmc.ncbi.nlm.nih.gov/articles/PMC11935499/pdf/main.pdf",
+            "status": "success",
+            "source": "open_access_fallback",
+            "fallback_provider": "unpaywall",
+        }
+
+    monkeypatch.setattr(
+        mcp_tools_module,
+        "_scihub_open_access_fallback",
+        fake_fallback,
+    )
+
+    wrapped = _harden_scihub_tools([upstream])[0]
+    result = await wrapped.ainvoke({"doi": "10.1016/j.jhlto.2024.100152"})
+
+    assert upstream.calls == [{"doi": "10.1016/j.jhlto.2024.100152"}]
+    assert calls == ["10.1016/j.jhlto.2024.100152"]
+    assert result["source"] == "open_access_fallback"
+    assert result["fallback_provider"] == "unpaywall"
 
 
 def test_windows_stdio_env_defaults_to_utf8_and_quiet_launchers(monkeypatch):
@@ -1314,7 +1351,7 @@ def test_paper_search_npx_keeps_args_when_node_is_new_enough(monkeypatch):
     assert args == ["-y", "paper-search-mcp-nodejs"]
 
 
-def test_scihub_legacy_git_uvx_config_rewrites_to_pypi(monkeypatch):
+def test_scihub_legacy_git_uvx_config_rewrites_to_archive_script(monkeypatch):
     monkeypatch.setattr(
         mcp_tools_module.shutil,
         "which",
@@ -1337,11 +1374,20 @@ def test_scihub_legacy_git_uvx_config_rewrites_to_pypi(monkeypatch):
     )
 
     assert command.endswith("uvx.exe")
-    assert args == ["--from", "sci-hub-mcp-server", "sci-hub-mcp-server"]
+    assert args[:2] == [
+        "--from",
+        (
+            "sci-hub-mcp-server @ "
+            "https://github.com/riichard/Sci-Hub-MCP-Server/archive/refs/heads/main.zip"
+        ),
+    ]
+    assert args[2:] == ["sci-hub-mcp", "--transport", "stdio"]
     assert env["PYTHONUTF8"] == "1"
+    assert env["SCIHUB_HTTP_CLIENT"] == "requests"
+    assert env["SCIHUB_INCLUDE_DEFAULT_MIRRORS"] == "true"
 
 
-def test_scihub_pypi_uvx_config_gets_windows_utf8_env(monkeypatch):
+def test_scihub_pypi_uvx_config_rewrites_to_archive_script(monkeypatch):
     monkeypatch.setattr(
         mcp_tools_module.shutil,
         "which",
@@ -1358,8 +1404,35 @@ def test_scihub_pypi_uvx_config_gets_windows_utf8_env(monkeypatch):
     )
 
     assert command.endswith("uvx.exe")
-    assert args == ["--from", "sci-hub-mcp-server", "sci-hub-mcp-server"]
+    assert args[:2] == [
+        "--from",
+        (
+            "sci-hub-mcp-server @ "
+            "https://github.com/riichard/Sci-Hub-MCP-Server/archive/refs/heads/main.zip"
+        ),
+    ]
+    assert args[2:] == ["sci-hub-mcp", "--transport", "stdio"]
     assert env["PYTHONUTF8"] == "1"
+    assert env["SCIHUB_TIMEOUT_SECONDS"] == "12"
+
+
+def test_pmc_article_url_from_pdf_converts_direct_pdf():
+    assert _pmc_article_url_from_pdf(
+        "https://pmc.ncbi.nlm.nih.gov/articles/PMC11935499/pdf/main.pdf"
+    ) == "https://pmc.ncbi.nlm.nih.gov/articles/PMC11935499/"
+
+
+def test_pmc_article_url_from_pdf_ignores_non_pmc_urls():
+    assert _pmc_article_url_from_pdf("https://example.com/articles/PMC11935499/pdf/main.pdf") is None
+    assert _pmc_article_url_from_pdf("https://pmc.ncbi.nlm.nih.gov/articles/notpmc/pdf/main.pdf") is None
+
+
+def test_download_challenge_detection_catches_security_shells():
+    assert _looks_like_download_challenge(
+        "<html><title>Preparing to download</title>Vulnerability Disclosure</html>",
+        "text/html",
+    )
+    assert not _looks_like_download_challenge("%PDF-1.7 body", "application/pdf")
 
 
 def test_zotero_collection_item_guidance_prefers_direct_collection_name_call():

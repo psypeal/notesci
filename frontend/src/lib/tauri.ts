@@ -95,15 +95,12 @@ export function captureFromPreview(): void {
   if (invoke) void invoke('capture_from_preview').catch(() => {})
 }
 
-/** Spawn a hidden loader window that opens ``url`` in a real browser,
- *  clears any JS/Cloudflare challenge, and reports the rendered page back
- *  via the ``preview-bytes`` event. Returns true if dispatched (desktop),
- *  false on the web build (no native loader available). */
+/** Legacy compatibility shim. Older frontend code called this to spawn a
+ *  dedicated loader window; active UI now opens the normal closeable
+ *  source-preview pop-up instead. */
 export function startPreviewFetch(url: string): boolean {
-  const invoke = tauriInvoke()
-  if (!invoke) return false
-  void invoke('start_preview_fetch', { url }).catch(() => {})
-  return true
+  openLivePreview(url, 'External source')
+  return isTauri()
 }
 
 /** Close the loader window without waiting (user dismissed / backed out). */

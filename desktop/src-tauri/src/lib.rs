@@ -1332,38 +1332,8 @@ const PREVIEW_FETCH_INIT_JS: &str = r#"
 /// this window — the content then renders inside the review modal.
 #[tauri::command]
 fn start_preview_fetch(app: tauri::AppHandle, url: String) -> Result<(), String> {
-    if !is_safe_external_url(&url) {
-        return Err("unsupported url scheme".into());
-    }
-    let parsed = tauri::Url::parse(url.trim()).map_err(|e| format!("bad url: {e}"))?;
-    info!("start_preview_fetch: {}", url);
-    let app_for_main = app.clone();
-    app.run_on_main_thread(move || {
-        if let Some(win) = app_for_main.get_webview_window(PREVIEW_FETCH_LABEL) {
-            let _ = win.navigate(parsed);
-            let _ = win.show();
-            let _ = win.set_focus();
-            return;
-        }
-        match tauri::WebviewWindowBuilder::new(
-            &app_for_main,
-            PREVIEW_FETCH_LABEL,
-            tauri::WebviewUrl::External(parsed),
-        )
-        .title("Completing the publisher’s security check — notesci")
-        .inner_size(900.0, 800.0)
-        .min_inner_size(420.0, 420.0)
-        .center()
-        .focused(true)
-        .initialization_script(PREVIEW_FETCH_INIT_JS)
-        .build()
-        {
-            Ok(_) => {}
-            Err(e) => warn!("start_preview_fetch build failed: {e}"),
-        }
-    })
-    .map_err(|e| format!("dispatch to main thread failed: {e}"))?;
-    Ok(())
+    info!("start_preview_fetch compatibility redirect: {}", url);
+    open_link_preview(app, url, Some("External source".to_string()))
 }
 
 /// Close the loader window without waiting for a result — used when the

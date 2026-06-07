@@ -490,7 +490,7 @@ jobs:
             if ($LASTEXITCODE -ne 0) {
               throw "installed bundled Python could not resolve Paper Search managed Node MCP launcher"
             }
-            & (Join-Path $installDir "python/python.exe") -c "from notesci.agent.mcp_tools import _build_connection; from notesci.mcp_catalog import get_entry; e=get_entry('scihub'); c=_build_connection(e.transport, e.config); print(c['command'], c['args']); assert c['transport']=='stdio'; assert c['command'].lower().endswith(('uvx.exe','uv.exe','python.exe')); assert 'sci-hub-mcp-server' in c['args']; assert not any(str(a).startswith('git+') for a in c['args']); assert c['env'].get('PYTHONUTF8') == '1'"
+            & (Join-Path $installDir "python/python.exe") -c "from notesci.agent.mcp_tools import _build_connection; from notesci.mcp_catalog import get_entry; e=get_entry('scihub'); c=_build_connection(e.transport, e.config); print(c['command'], c['args']); assert c['transport']=='stdio'; assert c['command'].lower().endswith(('uvx.exe','uv.exe','python.exe')); assert any('github.com/riichard/Sci-Hub-MCP-Server/archive/refs/heads/main.zip' in str(a) for a in c['args']); assert 'sci-hub-mcp' in c['args']; assert '--transport' in c['args'] and 'stdio' in c['args']; assert not any(str(a).startswith('git+') for a in c['args']); assert c['env'].get('PYTHONUTF8') == '1'; assert c['env'].get('SCIHUB_HTTP_CLIENT') == 'requests'; assert c['env'].get('SCIHUB_INCLUDE_DEFAULT_MIRRORS') == 'true'"
             if ($LASTEXITCODE -ne 0) {
               throw "installed bundled Python could not resolve Sci-Hub PyPI MCP launcher"
             }

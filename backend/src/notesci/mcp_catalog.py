@@ -289,7 +289,7 @@ CATALOG: tuple[CatalogEntry, ...] = (
         id="scihub",
         name="Sci-Hub",
         category="Research",
-        author="Debvex/sci-hub-mcp-server",
+        author="riichard/Sci-Hub-MCP-Server",
         # Honest framing: Sci-Hub routes around publisher paywalls and
         # its legal status varies by jurisdiction. Surfaced because the
         # reference research plugin includes it, but kept un-featured
@@ -316,10 +316,26 @@ CATALOG: tuple[CatalogEntry, ...] = (
             "command": "uvx",
             "args": [
                 "--from",
-                "sci-hub-mcp-server",
-                "sci-hub-mcp-server",
+                (
+                    "sci-hub-mcp-server @ "
+                    "https://github.com/riichard/Sci-Hub-MCP-Server/"
+                    "archive/refs/heads/main.zip"
+                ),
+                "sci-hub-mcp",
+                "--transport",
+                "stdio",
             ],
-            "env": {"PYTHONUTF8": "1"},
+            "env": {
+                "PYTHONUTF8": "1",
+                "SCIHUB_HTTP_CLIENT": "requests",
+                "SCIHUB_INCLUDE_DEFAULT_MIRRORS": "true",
+                "SCIHUB_BASE_URLS": (
+                    "https://sci-hub.se,https://sci-hub.st,"
+                    "https://sci-hub.ru,https://sci-hub.ren,"
+                    "https://sci-hub.mksa.top,https://sci-hub.ee"
+                ),
+                "SCIHUB_TIMEOUT_SECONDS": "12",
+            },
         },
         default_grants=_allow_all(),
     ),

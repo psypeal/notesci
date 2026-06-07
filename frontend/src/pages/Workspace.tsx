@@ -35,7 +35,7 @@ import {
   type IngestionJob,
 } from '../components/workspace/IngestionTracker'
 import { UploadProgressView } from '../components/workspace/UploadProgressView'
-import { api, apiForm, errorMessage, getToken, type ApiError } from '../lib/api'
+import { api, apiBlob, apiForm, errorMessage, getToken, type ApiError } from '../lib/api'
 import { initialsFor } from '../lib/initials'
 import { getProviders, resolveUploadModel } from '../lib/models'
 import { readPrefs } from '../lib/prefs'
@@ -43,9 +43,6 @@ import { isSafeHttpUrl } from '../lib/redirect'
 import {
   openInSystemBrowser,
   openLivePreview,
-  onTauriEvent,
-  isTauri,
-  startPreviewFetch,
   cancelPreviewFetch,
 } from '../lib/tauri'
 
@@ -55,15 +52,6 @@ const LazyPdfReader = lazy(() =>
     default: m.PdfReader,
   })),
 )
-
-/** Decode a base64 string to bytes (for PDF blobs handed over from the
- *  hidden loader window). */
-function base64ToBytes(b64: string): Uint8Array {
-  const bin = atob(b64)
-  const out = new Uint8Array(bin.length)
-  for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i)
-  return out
-}
 
 interface MeOut {
   id: string
@@ -100,6 +88,16 @@ const UUID_RE =
 
 function isUuidLike(value: string): boolean {
   return UUID_RE.test(value)
+}
+
+function isLikelyDirectPdfUrl(url: string): boolean {
+  try {
+    const u = new URL(url)
+    const path = u.pathname.toLowerCase()
+    return path.endsWith('.pdf') || path.includes('/pdf/') || path.includes('articlepdf')
+  } catch {
+    return /\.pdf(?:[?#]|$)/i.test(url)
+  }
 }
 
 /** Resolve a stored layout value to a current LayoutMode. Migrates the
@@ -1130,17 +1128,19 @@ export function WorkspacePage() {
   } | null>(null)
   const [externalPreviewLoading, setExternalPreviewLoading] = useState(false)
   const [externalPreviewError, setExternalPreviewError] = useState<string | null>(null)
-  // Live-page view: the source is fetched through a hidden loader window
-  // (clearing JS/Cloudflare challenges) and rendered as DOM *inside* the
-  // modal — a PDF via the pdf.js reader, HTML as readable text. ``livePreview``
-  // is on once the user asks for the live view; the result lands in one of
-  // livePdfBlob / liveHtml / liveError.
+  // Live source review. Direct PDF URLs are fetched as bytes through the
+  // backend and rendered in this modal. Non-PDF live pages open in the
+  // normal Notesci pop-up window so publisher layouts stay interactive and
+  // closeable.
   const [livePreview, setLivePreview] = useState(false)
   const [liveLoading, setLiveLoading] = useState(false)
   const [livePdfBlob, setLivePdfBlob] = useState<Blob | null>(null)
   const [liveHtml, setLiveHtml] = useState<string | null>(null)
   const [liveError, setLiveError] = useState<string | null>(null)
+  const liveFetchAbortRef = useRef<AbortController | null>(null)
   const resetLive = useCallback(() => {
+    liveFetchAbortRef.current?.abort()
+    liveFetchAbortRef.current = null
     cancelPreviewFetch()
     setLivePreview(false)
     setLiveLoading(false)
@@ -1150,6 +1150,8 @@ export function WorkspacePage() {
   }, [])
   const openExternalSource = useCallback((url: string) => {
     if (!isSafeHttpUrl(url)) return
+    liveFetchAbortRef.current?.abort()
+    liveFetchAbortRef.current = null
     setLivePreview(false)
     setLiveLoading(false)
     setLivePdfBlob(null)
@@ -1190,87 +1192,88 @@ export function WorkspacePage() {
       })
     return () => ac.abort()
   }, [externalSource])
-  // "View live page": fetch the source through a hidden loader window (a
-  // real browser, so it clears Cloudflare/JS challenges) and render the
-  // result as DOM inside this modal. On the web build there's no loader,
-  // so fall back to opening a new tab.
-  const onViewLivePage = useCallback(
+  const openLivePageWindow = useCallback(
     (url: string) => {
-      if (!isTauri()) {
-        openLivePreview(url)
-        return
-      }
+      liveFetchAbortRef.current?.abort()
+      liveFetchAbortRef.current = null
+      setLivePreview(false)
+      setLiveLoading(false)
       setLivePdfBlob(null)
       setLiveHtml(null)
       setLiveError(null)
-      setLiveLoading(true)
-      setLivePreview(true)
-      startPreviewFetch(url)
+      openLivePreview(url, externalPreview?.title || null)
     },
-    [],
+    [externalPreview],
   )
-  // Receive the loader window's fetched page and render it in the modal:
-  // PDF bytes → a Blob the pdf.js reader renders; HTML → readable text.
-  useEffect(() => {
-    const off = onTauriEvent<{
-      url: string
-      kind: string
-      contentType: string
-      base64: string
-      text: string
-    }>('preview-bytes', (p) => {
-      setLiveLoading(false)
-      if (p.kind === 'pdf' && p.base64) {
-        try {
-          const bytes = base64ToBytes(p.base64)
-          const pdfBytes =
-            bytes.buffer instanceof ArrayBuffer
-              ? bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength)
-              : new Uint8Array(bytes).buffer
-          setLivePdfBlob(new Blob([pdfBytes], { type: 'application/pdf' }))
+
+  // "View live page": non-PDF URLs open the normal Notesci pop-up. Direct
+  // PDF URLs render in this modal via the backend byte-fetch endpoint.
+  const onViewLivePage = useCallback(
+    (url: string) => {
+      liveFetchAbortRef.current?.abort()
+      setLivePdfBlob(null)
+      setLiveHtml(null)
+      setLiveError(null)
+
+      if (!isLikelyDirectPdfUrl(url)) {
+        setLivePreview(false)
+        setLiveLoading(false)
+        openLivePreview(url, externalPreview?.title || null)
+        return
+      }
+
+      setLivePreview(true)
+      setLiveLoading(true)
+      const ac = new AbortController()
+      liveFetchAbortRef.current = ac
+      void apiBlob('/external/fetch', {
+        method: 'POST',
+        auth: true,
+        signal: ac.signal,
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ url }),
+      })
+        .then((blob) => {
+          if (ac.signal.aborted) return
+          setLivePdfBlob(
+            blob.type === 'application/pdf'
+              ? blob
+              : new Blob([blob], { type: 'application/pdf' }),
+          )
           setLiveHtml(null)
           setLiveError(null)
-        } catch {
-          setLiveError('Could not decode the fetched PDF.')
-        }
-      } else if (p.kind === 'html') {
-        const text = (p.text ?? '').trim()
-        if (text.length < 30) {
+          setLiveLoading(false)
+        })
+        .catch((err) => {
+          if (ac.signal.aborted) return
+          setLiveLoading(false)
           setLiveError(
-            "The page loaded but exposed no readable text. Use “Open in browser”.",
+            errorMessage(err, "Couldn't fetch this PDF here. Open the live page instead."),
           )
-        } else {
-          setLiveHtml(text)
-          setLivePdfBlob(null)
-          setLiveError(null)
-        }
-      } else {
-        setLiveError(
-          "Couldn't load this page in the in-app browser. Use “Open in browser”.",
-        )
-      }
-    })
-    return off
-  }, [])
-  // Safety net: if the loader never reports back (verification window left
-  // open, network stall), stop the spinner after a while and offer a
-  // retry. A late ``preview-bytes`` still wins — its handler overrides
-  // this error state.
+        })
+        .finally(() => {
+          if (liveFetchAbortRef.current === ac) liveFetchAbortRef.current = null
+        })
+    },
+    [externalPreview],
+  )
+  // Safety net: if the PDF byte fetch stalls, stop the spinner after a
+  // while and offer explicit alternatives.
   useEffect(() => {
     if (!liveLoading) return
     const t = window.setTimeout(() => {
       setLiveLoading(false)
       setLiveError(
-        'The security check is taking longer than expected. Complete it in the open window, then retry — or use “Open in browser”.',
+        'The PDF preview is taking longer than expected. Retry, open the live page, or use “Open in browser”.',
       )
     }, 90_000)
     return () => window.clearTimeout(t)
   }, [liveLoading])
   // Add the reviewed source to the project. Smart about what we have:
-  //  - a PDF fetched via the live loader → multipart upload of the bytes
+  //  - a PDF fetched via the external fetch endpoint → multipart upload
   //    (/materials/ingest-pdf), which works for publishers that 403 a
   //    server-side fetch;
-  //  - HTML text fetched via the live loader → text ingest;
+  //  - HTML text captured from the live pop-up → text ingest;
   //  - otherwise → the plain server-side URL ingest.
   const addExternalSourceToProject = useCallback(async () => {
     if (!externalSource || !activeProjectId) return
@@ -1987,6 +1990,8 @@ export function WorkspacePage() {
           title="External source"
           description="Review this source before deciding whether to add it to the project."
           onClose={() => {
+            liveFetchAbortRef.current?.abort()
+            liveFetchAbortRef.current = null
             cancelPreviewFetch()
             setExternalSource(null)
           }}
@@ -2073,10 +2078,9 @@ export function WorkspacePage() {
                   >
                     <span className="spinner" aria-hidden />
                     <div style={{ maxWidth: 420, lineHeight: 1.6 }}>
-                      A small window opened to clear the publisher’s security
-                      check (some sites can’t verify in the background). Once it
-                      passes — automatically, or after you complete the check —
-                      it closes and the page appears here.
+                      Fetching the PDF through Notesci so it can render in this
+                      review modal. If this takes too long, retry, open the live
+                      page, or use “Open in browser”.
                     </div>
                   </div>
                 ) : livePdfBlob ? (
@@ -2117,6 +2121,13 @@ export function WorkspacePage() {
                         onClick={() => onViewLivePage(externalSource.url)}
                       >
                         Retry
+                      </button>
+                      <button
+                        type="button"
+                        className="ns-btn"
+                        onClick={() => openLivePageWindow(externalSource.url)}
+                      >
+                        Open live page
                       </button>
                       <button
                         type="button"
@@ -2178,10 +2189,10 @@ export function WorkspacePage() {
                       maxWidth: 480,
                     }}
                   >
-                    This publisher blocks automated fetching, so it can’t be added
-                    directly. Open the live page in the in-app browser, then click
-                    the <strong>“＋ Add to notesci”</strong> button in that window to
-                    capture the rendered page into this project.
+                    This publisher blocks automated fetching, so it cannot be
+                    added directly from Notesci. Open the live page in the
+                    Notesci pop-up to review the layout; use “Open in browser”
+                    only as a fallback.
                   </div>
                   <div style={{ display: 'flex', gap: 10, marginTop: 4 }}>
                     <button

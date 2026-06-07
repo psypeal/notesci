@@ -1,7 +1,7 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "source-fetch",
-  "description": "Hidden loader window that opens an arbitrary remote source page to clear JS/Cloudflare challenges, then hands its bytes/text back via exactly one command — preview_bytes. No other notesci IPC is exposed to the remote page.",
+  "description": "Legacy source-fetch capability retained only so stale windows can be closed and old preview_bytes events remain harmless. Active source review uses the normal source-preview window plus backend PDF byte fetches.",
   "windows": ["source-fetch"],
   "webviews": ["source-fetch"],
   "remote": {
