@@ -486,6 +486,14 @@ jobs:
             if ($LASTEXITCODE -ne 0) {
               throw "installed bundled Python could not resolve Zotero uvx MCP stdio launcher"
             }
+            & (Join-Path $installDir "python/python.exe") -c "from notesci.agent.mcp_tools import _build_connection; from notesci.mcp_catalog import get_entry; e=get_entry('paper-search'); c=_build_connection(e.transport, e.config); print(c['command'], c['args']); assert c['transport']=='stdio'; assert c['command'].lower().endswith(('npx.cmd','npx.exe','npx')); assert '--package' in c['args']; assert 'node@20' in c['args']; assert 'paper-search-mcp-nodejs' in c['args']"
+            if ($LASTEXITCODE -ne 0) {
+              throw "installed bundled Python could not resolve Paper Search managed Node MCP launcher"
+            }
+            & (Join-Path $installDir "python/python.exe") -c "from notesci.agent.mcp_tools import _build_connection; from notesci.mcp_catalog import get_entry; e=get_entry('scihub'); c=_build_connection(e.transport, e.config); print(c['command'], c['args']); assert c['transport']=='stdio'; assert c['command'].lower().endswith(('uvx.exe','uv.exe','python.exe')); assert 'sci-hub-mcp-server' in c['args']; assert not any(str(a).startswith('git+') for a in c['args']); assert c['env'].get('PYTHONUTF8') == '1'"
+            if ($LASTEXITCODE -ne 0) {
+              throw "installed bundled Python could not resolve Sci-Hub PyPI MCP launcher"
+            }
           }
 
           function Get-NotesciRuntimeProcesses {

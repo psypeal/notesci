@@ -154,6 +154,7 @@ from .agent.graph import RequestCtx, build_graph, reset_request_ctx, set_request
 from .agent.mcp_tools import (
     invalidate_workspace_cache as invalidate_mcp_cache,
     load_workspace_mcp_tools,
+    _stdio_env as mcp_stdio_env,
 )
 from .agent.messages import extract_text
 from .skills import all_skills, get_skill, is_builtin_skill
@@ -4847,17 +4848,7 @@ async def get_system_tools(
     import shutil
 
     def available(name: str) -> bool:
-        path = os.environ.get("PATH", "")
-        if sys.platform == "win32":
-            extras: list[str] = []
-            exe_dir = _Path(sys.executable).resolve().parent
-            extras.extend([str(exe_dir), str(exe_dir / "Scripts")])
-            if appdata := os.environ.get("APPDATA"):
-                extras.append(str(_Path(appdata) / "npm"))
-            if userprofile := os.environ.get("USERPROFILE"):
-                home = _Path(userprofile)
-                extras.extend([str(home / ".local" / "bin"), str(home / ".cargo" / "bin")])
-            path = os.pathsep.join([*extras, path])
+        path = mcp_stdio_env({}).get("PATH", "")
         if shutil.which(name, path=path) is not None:
             return True
         if name == "uvx" and shutil.which("uv", path=path) is not None:
@@ -5625,7 +5616,15 @@ def _last_visible_ai_text(messages: list[Any]) -> str:
     return ""
 
 
-_EXPLICIT_MCP_SLUGS = ("obsidian", "zotero", "notion")
+_EXPLICIT_MCP_ALIASES = {
+    "obsidian": ("obsidian",),
+    "zotero": ("zotero",),
+    "notion": ("notion",),
+    "scihub": ("scihub", "sci-hub", "sci hub"),
+    "paper-search": ("paper-search", "paper search"),
+    "pubmed": ("pubmed", "pub med"),
+    "semantic-scholar": ("semantic-scholar", "semantic scholar"),
+}
 _MCP_LOAD_HINTS = (
     "mcp",
     "connector",
@@ -5641,8 +5640,19 @@ _MCP_LOAD_HINTS = (
     "vault",
     "database",
     "databases",
+    "doi",
+    "paper",
+    "papers",
+    "article",
+    "articles",
+    "literature",
+    "full text",
+    "pdf",
     "pubmed",
     "arxiv",
+    "scihub",
+    "sci-hub",
+    "paper search",
     "semantic scholar",
     "semantic-scholar",
     "search",
@@ -5674,7 +5684,11 @@ def _requested_mcp_slugs_for_turn(message: str) -> set[str] | None:
     normal chat turns.
     """
     text = (message or "").lower()
-    explicit = {slug for slug in _EXPLICIT_MCP_SLUGS if slug in text}
+    explicit = {
+        slug
+        for slug, aliases in _EXPLICIT_MCP_ALIASES.items()
+        if any(alias in text for alias in aliases)
+    }
     if explicit:
         return explicit
     if (
@@ -5709,8 +5723,13 @@ _MCP_READ_TOOL_HINTS = (
     "get",
     "query",
     "fetch",
+    "download",
     "browse",
     "metadata",
+    "doi",
+    "paper",
+    "article",
+    "pdf",
     "note",
     "notes",
     "page",

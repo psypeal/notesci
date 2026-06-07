@@ -251,13 +251,20 @@ CATALOG: tuple[CatalogEntry, ...] = (
         name="Paper Search",
         category="Research",
         author="paper-search-mcp",
-        description="Federated search across 14 databases (Scholar, bioRxiv, OpenAlex, CORE, DOAJ, Crossref, Europe PMC, ...).",
+        description="Federated search across 14 databases (Scholar, bioRxiv, OpenAlex, CORE, DOAJ, Crossref, Europe PMC, ...). Uses managed Node 20 via npx for compatibility.",
         rating=4.6,
         installs="19k",
         transport="stdio",
         config={
             "command": "npx",
-            "args": ["-y", "paper-search-mcp-nodejs"],
+            "args": [
+                "-y",
+                "--package",
+                "node@20",
+                "--package",
+                "paper-search-mcp-nodejs",
+                "paper-search-mcp-nodejs",
+            ],
             "env": {},
         },
         show_in_sources=True,
@@ -282,7 +289,7 @@ CATALOG: tuple[CatalogEntry, ...] = (
         id="scihub",
         name="Sci-Hub",
         category="Research",
-        author="riichard/Sci-Hub-MCP-Server",
+        author="Debvex/sci-hub-mcp-server",
         # Honest framing: Sci-Hub routes around publisher paywalls and
         # its legal status varies by jurisdiction. Surfaced because the
         # reference research plugin includes it, but kept un-featured
@@ -309,12 +316,10 @@ CATALOG: tuple[CatalogEntry, ...] = (
             "command": "uvx",
             "args": [
                 "--from",
-                "git+https://github.com/riichard/Sci-Hub-MCP-Server",
-                "sci-hub-mcp",
-                "--transport",
-                "stdio",
+                "sci-hub-mcp-server",
+                "sci-hub-mcp-server",
             ],
-            "env": {},
+            "env": {"PYTHONUTF8": "1"},
         },
         default_grants=_allow_all(),
     ),

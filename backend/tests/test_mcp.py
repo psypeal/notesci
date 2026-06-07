@@ -24,10 +24,14 @@ import uuid
 import pytest
 from httpx import ASGITransport, AsyncClient
 
+from notesci.agent import mcp_tools as mcp_tools_module
 from notesci.agent.mcp_tools import (
     _extract_zotero_collection_keys,
+    _format_mcp_load_error,
     _harden_zotero_tools,
     _resolve_zotero_collection_key,
+    _resolve_stdio_command,
+    _stdio_env,
     _tool_arg_names,
     _wrap_zotero_collection_items_tool,
     _zotero_descendant_collections,
@@ -38,7 +42,11 @@ from notesci.agent.mcp_tools import (
 from notesci.agent.graph import RequestCtx, _format_mcp_tool_status
 from notesci.config import settings
 from notesci.db import get_conn
-from notesci.main import app, _requested_mcp_slugs_for_turn
+from notesci.main import (
+    app,
+    _filter_mcp_tools_for_turn,
+    _requested_mcp_slugs_for_turn,
+)
 
 
 @pytest.fixture
@@ -1138,6 +1146,220 @@ def test_collection_item_wording_loads_mcp_tools():
     assert _requested_mcp_slugs_for_turn(
         'what are the items in the collection "Animal use"?'
     ) == {"zotero"}
+
+
+def test_research_mcp_aliases_load_targeted_servers():
+    assert _requested_mcp_slugs_for_turn(
+        "use scihub to fetch DOI 10.1000/example"
+    ) == {"scihub"}
+    assert _requested_mcp_slugs_for_turn(
+        "use paper search for naphthalene toxicity"
+    ) == {"paper-search"}
+    assert _requested_mcp_slugs_for_turn(
+        "search PubMed for PAH exposure"
+    ) == {"pubmed"}
+    assert _requested_mcp_slugs_for_turn(
+        "use semantic scholar for brain aging"
+    ) == {"semantic-scholar"}
+
+
+def test_research_mcp_aliases_surface_load_errors():
+    ctx = RequestCtx(
+        tool_to_server_id={"pubmed__search": "srv-1"},
+        mcp_load_errors={
+            "paper-search": (
+                "MCP package 'paper-search-mcp-nodejs' requires Node >=20; "
+                "found Node v16.3.0 at C:\\Program Files\\nodejs\\node.exe."
+            ),
+        },
+    )
+
+    guidance = _format_mcp_tool_status(
+        ctx,
+        "use paper search for naphthalene toxicity",
+    )
+
+    assert guidance is not None
+    assert "paper-search" in guidance
+    assert "requires Node >=20" in guidance
+
+
+def test_research_download_tools_are_kept_for_read_turns():
+    class Tool:
+        def __init__(self, name: str) -> None:
+            self.name = name
+
+    tools = [
+        Tool("scihub__download_scihub_pdf"),
+        Tool("scihub__search_scihub_by_doi"),
+        Tool("scihub__delete_cache"),
+    ]
+
+    filtered, tool_to_server = _filter_mcp_tools_for_turn(
+        tools,
+        {
+            "scihub__download_scihub_pdf": "srv-1",
+            "scihub__search_scihub_by_doi": "srv-1",
+            "scihub__delete_cache": "srv-1",
+        },
+        "use scihub to retrieve this DOI",
+    )
+
+    assert [tool.name for tool in filtered] == [
+        "scihub__download_scihub_pdf",
+        "scihub__search_scihub_by_doi",
+    ]
+    assert set(tool_to_server) == {
+        "scihub__download_scihub_pdf",
+        "scihub__search_scihub_by_doi",
+    }
+
+
+def test_research_mcp_load_errors_are_actionable():
+    paper = _format_mcp_load_error("paper-search", RuntimeError("npm ETIMEDOUT"))
+    scihub = _format_mcp_load_error("scihub", RuntimeError("uv download failed"))
+
+    assert "managed Node 20" in paper
+    assert "npm ETIMEDOUT" in paper
+    assert "sci-hub-mcp-server" in scihub
+    assert "uv download failed" in scihub
+
+
+def test_windows_stdio_env_defaults_to_utf8_and_quiet_launchers(monkeypatch):
+    monkeypatch.setattr(mcp_tools_module.sys, "platform", "win32")
+    for key in (
+        "PYTHONUTF8",
+        "PYTHONIOENCODING",
+        "UV_NO_PROGRESS",
+        "NPM_CONFIG_UPDATE_NOTIFIER",
+        "NPM_CONFIG_FUND",
+        "NPM_CONFIG_AUDIT",
+    ):
+        monkeypatch.delenv(key, raising=False)
+
+    env = _stdio_env({})
+
+    assert env["PYTHONUTF8"] == "1"
+    assert env["PYTHONIOENCODING"] == "utf-8"
+    assert env["UV_NO_PROGRESS"] == "1"
+    assert env["NPM_CONFIG_UPDATE_NOTIFIER"] == "false"
+    assert env["NPM_CONFIG_FUND"] == "false"
+    assert env["NPM_CONFIG_AUDIT"] == "false"
+
+
+def test_paper_search_npx_uses_managed_node_when_system_node_is_too_old(monkeypatch):
+    def fake_which(name: str, path: str | None = None) -> str | None:
+        if name == "npx":
+            return r"C:\Program Files\nodejs\npx.cmd"
+        if name == "node":
+            return r"C:\Program Files\nodejs\node.exe"
+        return None
+
+    class Result:
+        returncode = 0
+        stdout = "v16.3.0\n"
+        stderr = ""
+
+    monkeypatch.setattr(mcp_tools_module.shutil, "which", fake_which)
+    monkeypatch.setattr(
+        mcp_tools_module.subprocess,
+        "run",
+        lambda *args, **kwargs: Result(),
+    )
+
+    command, args = _resolve_stdio_command(
+        "npx",
+        ["-y", "paper-search-mcp-nodejs"],
+        {"PATH": ""},
+    )
+
+    assert command.endswith("npx.cmd")
+    assert args == [
+        "-y",
+        "--package",
+        "node@20",
+        "--package",
+        "paper-search-mcp-nodejs",
+        "paper-search-mcp-nodejs",
+    ]
+
+
+def test_paper_search_npx_keeps_args_when_node_is_new_enough(monkeypatch):
+    def fake_which(name: str, path: str | None = None) -> str | None:
+        if name == "npx":
+            return r"C:\Program Files\nodejs\npx.cmd"
+        if name == "node":
+            return r"C:\Program Files\nodejs\node.exe"
+        return None
+
+    class Result:
+        returncode = 0
+        stdout = "v20.11.1\n"
+        stderr = ""
+
+    monkeypatch.setattr(mcp_tools_module.shutil, "which", fake_which)
+    monkeypatch.setattr(
+        mcp_tools_module.subprocess,
+        "run",
+        lambda *args, **kwargs: Result(),
+    )
+
+    command, args = _resolve_stdio_command(
+        "npx",
+        ["-y", "paper-search-mcp-nodejs"],
+        {"PATH": ""},
+    )
+
+    assert command.endswith("npx.cmd")
+    assert args == ["-y", "paper-search-mcp-nodejs"]
+
+
+def test_scihub_legacy_git_uvx_config_rewrites_to_pypi(monkeypatch):
+    monkeypatch.setattr(
+        mcp_tools_module.shutil,
+        "which",
+        lambda name, path=None: r"C:\Users\me\.local\bin\uvx.exe"
+        if name == "uvx"
+        else None,
+    )
+
+    env = {"PATH": ""}
+    command, args = _resolve_stdio_command(
+        "uvx",
+        [
+            "--from",
+            "git+https://github.com/riichard/Sci-Hub-MCP-Server",
+            "sci-hub-mcp",
+            "--transport",
+            "stdio",
+        ],
+        env,
+    )
+
+    assert command.endswith("uvx.exe")
+    assert args == ["--from", "sci-hub-mcp-server", "sci-hub-mcp-server"]
+    assert env["PYTHONUTF8"] == "1"
+
+
+def test_scihub_pypi_uvx_config_gets_windows_utf8_env(monkeypatch):
+    monkeypatch.setattr(
+        mcp_tools_module.shutil,
+        "which",
+        lambda name, path=None: r"C:\Users\me\.local\bin\uvx.exe"
+        if name == "uvx"
+        else None,
+    )
+
+    env = {"PATH": ""}
+    command, args = _resolve_stdio_command(
+        "uvx",
+        ["--from", "sci-hub-mcp-server", "sci-hub-mcp-server"],
+        env,
+    )
+
+    assert command.endswith("uvx.exe")
+    assert args == ["--from", "sci-hub-mcp-server", "sci-hub-mcp-server"]
+    assert env["PYTHONUTF8"] == "1"
 
 
 def test_zotero_collection_item_guidance_prefers_direct_collection_name_call():

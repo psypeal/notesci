@@ -29,6 +29,7 @@ import os
 from pathlib import Path
 import re
 import shutil
+import subprocess
 import sys
 import time
 from dataclasses import dataclass
@@ -54,6 +55,17 @@ log = logging.getLogger(__name__)
 
 _CACHE_TTL_SECONDS = 300.0
 _CACHE_MAX_ENTRIES = 50
+
+_NODE_MCP_MIN_MAJOR_BY_PACKAGE = {
+    "paper-search-mcp-nodejs": 20,
+}
+_NODE_MCP_MANAGED_NODE_PACKAGE = {
+    "paper-search-mcp-nodejs": "node@20",
+}
+_LEGACY_SCIHUB_GIT_SOURCES = {
+    "git+https://github.com/riichard/sci-hub-mcp-server",
+    "git+https://github.com/riichard/Sci-Hub-MCP-Server",
+}
 
 
 @dataclass
@@ -150,11 +162,18 @@ def _windows_extra_path_entries() -> list[str]:
     exe_dir = Path(sys.executable).resolve().parent
     raw.extend([exe_dir, exe_dir / "Scripts"])
     if appdata := os.environ.get("APPDATA"):
-        raw.append(Path(appdata) / "npm")
+        raw.extend([Path(appdata) / "npm", Path(appdata) / "pnpm"])
     if localappdata := os.environ.get("LOCALAPPDATA"):
+        raw.extend([
+            Path(localappdata) / "Programs" / "nodejs",
+            Path(localappdata) / "pnpm",
+        ])
         programs = Path(localappdata) / "Programs" / "Python"
         if programs.is_dir():
             raw.extend(path / "Scripts" for path in programs.glob("Python*") if path.is_dir())
+    for env_name in ("ProgramFiles", "ProgramFiles(x86)"):
+        if program_files := os.environ.get(env_name):
+            raw.append(Path(program_files) / "nodejs")
     if userprofile := os.environ.get("USERPROFILE"):
         home = Path(userprofile)
         raw.extend([home / ".local" / "bin", home / ".cargo" / "bin"])
@@ -195,7 +214,178 @@ def _stdio_env(config_env: dict | None) -> dict[str, str]:
             merged.append(part)
         if merged:
             env["PATH"] = os.pathsep.join(merged)
+        # Stdio MCP servers speak JSON over stdout/stderr. On Windows,
+        # Python defaults can still inherit legacy code pages from the
+        # desktop process, and npm/uv progress/update noise can corrupt
+        # protocol streams. Keep these defaults quiet and UTF-8 unless a
+        # user explicitly configured different values for a server.
+        env.setdefault("PYTHONUTF8", "1")
+        env.setdefault("PYTHONIOENCODING", "utf-8")
+        env.setdefault("NO_COLOR", "1")
+        env.setdefault("UV_NO_PROGRESS", "1")
+        env.setdefault("NPM_CONFIG_UPDATE_NOTIFIER", "false")
+        env.setdefault("NPM_CONFIG_FUND", "false")
+        env.setdefault("NPM_CONFIG_AUDIT", "false")
+        env.setdefault("npm_config_update_notifier", "false")
+        env.setdefault("npm_config_fund", "false")
+        env.setdefault("npm_config_audit", "false")
     return env
+
+
+def _command_basename(command: str) -> str:
+    name = command.replace("\\", "/").rsplit("/", 1)[-1].lower()
+    for suffix in (".exe", ".cmd", ".bat", ".ps1"):
+        if name.endswith(suffix):
+            return name[: -len(suffix)]
+    return name
+
+
+def _node_mcp_package(args: list[str]) -> str | None:
+    tokens = [str(arg).strip() for arg in args]
+    for package in _NODE_MCP_MIN_MAJOR_BY_PACKAGE:
+        if package in tokens:
+            return package
+    return None
+
+
+def _npx_args_include_managed_node(args: list[str]) -> bool:
+    return any(str(arg).strip().lower().startswith("node@") for arg in args)
+
+
+def _node_major(version: str) -> int | None:
+    match = re.search(r"v?(\d+)(?:\.|$)", version.strip())
+    if not match:
+        return None
+    try:
+        return int(match.group(1))
+    except ValueError:
+        return None
+
+
+def _subprocess_creation_flags() -> int:
+    if sys.platform != "win32":
+        return 0
+    return int(getattr(subprocess, "CREATE_NO_WINDOW", 0))
+
+
+def _detect_node_runtime(env: dict[str, str], npx_path: str | None = None) -> tuple[str | None, str | None, int | None]:
+    candidates: list[str] = []
+    if npx_path:
+        npx_dir = Path(npx_path).parent
+        for name in ("node.exe", "node"):
+            candidate = npx_dir / name
+            if candidate.exists():
+                candidates.append(str(candidate))
+    resolved = shutil.which("node", path=env.get("PATH"))
+    if resolved:
+        candidates.append(resolved)
+
+    seen: set[str] = set()
+    for candidate in candidates:
+        key = candidate.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        try:
+            kwargs: dict[str, Any] = {
+                "check": False,
+                "capture_output": True,
+                "text": True,
+                "timeout": 5,
+                "env": env,
+            }
+            creation_flags = _subprocess_creation_flags()
+            if creation_flags:
+                kwargs["creationflags"] = creation_flags
+            result = subprocess.run([candidate, "--version"], **kwargs)
+        except Exception:
+            continue
+        version = (result.stdout or result.stderr or "").strip()
+        major = _node_major(version)
+        if result.returncode == 0 and major is not None:
+            return candidate, version, major
+    return None, None, None
+
+
+def _managed_node_npx_args(args: list[str], package: str) -> list[str]:
+    if _npx_args_include_managed_node(args):
+        return args
+    managed_node = _NODE_MCP_MANAGED_NODE_PACKAGE[package]
+    try:
+        package_index = args.index(package)
+        passthrough = args[package_index + 1 :]
+    except ValueError:
+        passthrough = []
+    return [
+        "-y",
+        "--package",
+        managed_node,
+        "--package",
+        package,
+        package,
+        *passthrough,
+    ]
+
+
+def _prepare_npx_node_runtime(
+    command_path: str,
+    args: list[str],
+    env: dict[str, str],
+) -> list[str]:
+    package = _node_mcp_package(args)
+    if not package:
+        return args
+    if _npx_args_include_managed_node(args):
+        return args
+
+    required = _NODE_MCP_MIN_MAJOR_BY_PACKAGE[package]
+    node_path, node_version, node_major = _detect_node_runtime(env, command_path)
+    if node_major is not None and node_major >= required:
+        return args
+
+    remediated = _managed_node_npx_args(args, package)
+    if remediated != args:
+        found = (
+            f"found Node {node_version} at {node_path}"
+            if node_version and node_path
+            else "no compatible Node runtime was detected"
+        )
+        log.info(
+            "MCP package %s requires Node >=%s; %s. Using managed %s via npx.",
+            package,
+            required,
+            found,
+            _NODE_MCP_MANAGED_NODE_PACKAGE[package],
+        )
+        return remediated
+
+    found = (
+        f"found Node {node_version} at {node_path}"
+        if node_version and node_path
+        else "Node was not found"
+    )
+    raise ValueError(
+        f"MCP package {package!r} requires Node >={required}; {found}. "
+        "Install Node 20+ or reinstall this connector from the notesci catalog."
+    )
+
+
+def _normalize_uvx_args(args: list[str], env: dict[str, str] | None = None) -> list[str]:
+    lowered = {str(arg).strip().lower() for arg in args}
+    if any(
+        any(arg.startswith(source.lower()) for source in _LEGACY_SCIHUB_GIT_SOURCES)
+        for arg in lowered
+    ):
+        log.info(
+            "Rewriting legacy Sci-Hub MCP Git uvx launch to PyPI package "
+            "sci-hub-mcp-server."
+        )
+        if env is not None:
+            env.setdefault("PYTHONUTF8", "1")
+        return ["--from", "sci-hub-mcp-server", "sci-hub-mcp-server"]
+    if "sci-hub-mcp-server" in lowered and env is not None:
+        env.setdefault("PYTHONUTF8", "1")
+    return args
 
 
 def _resolve_stdio_command(command: str, args: list[str], env: dict[str, str]) -> tuple[str, list[str]]:
@@ -206,13 +396,22 @@ def _resolve_stdio_command(command: str, args: list[str], env: dict[str, str]) -
     # Explicit paths are respected; bare names are resolved to real .exe/.cmd
     # paths so Windows CreateProcess does not fail with WinError 2.
     if "/" in command or "\\" in command:
+        if _command_basename(command) == "npx":
+            args = _prepare_npx_node_runtime(command, args, env)
+        elif _command_basename(command) == "uvx":
+            args = _normalize_uvx_args(args, env)
         return command, args
 
     resolved = shutil.which(command, path=env.get("PATH"))
     if resolved:
+        if _command_basename(command) == "npx":
+            args = _prepare_npx_node_runtime(resolved, args, env)
+        elif _command_basename(command) == "uvx":
+            args = _normalize_uvx_args(args, env)
         return resolved, args
 
     if sys.platform == "win32" and command.lower() == "uvx":
+        args = _normalize_uvx_args(args, env)
         resolved_uv = shutil.which("uv", path=env.get("PATH"))
         if resolved_uv:
             return resolved_uv, ["tool", "run", *args]
@@ -267,6 +466,27 @@ def _build_connection(transport: str, config: dict) -> dict[str, Any]:
             out["cwd"] = config["cwd"]
         return out
     raise ValueError(f"unknown transport: {transport!r}")
+
+
+def _format_mcp_load_error(slug: str, exc: Exception) -> str:
+    raw = str(exc).strip() or repr(exc)
+    normalized = slug.lower()
+    if normalized == "paper-search":
+        return (
+            "Paper Search failed to start. notesci uses managed Node 20 for "
+            "this MCP; if this persists, check that npm/npx can download "
+            "packages on this network. Raw error: "
+            f"{raw}"
+        )
+    if normalized == "scihub":
+        return (
+            "Sci-Hub failed to start. notesci uses the PyPI "
+            "sci-hub-mcp-server package and avoids the legacy Git-backed "
+            "launcher; if this persists, check Python package downloads, "
+            "network policy, and Sci-Hub access in your jurisdiction. Raw "
+            f"error: {raw}"
+        )
+    return raw
 
 
 def _is_tool_allowed(tool_name: str, grants: dict | None) -> bool:
@@ -1228,10 +1448,11 @@ async def load_workspace_mcp_tools(
         try:
             connections[slug] = _build_connection(transport, runtime_cfg)
         except ValueError as e:
+            message = _format_mcp_load_error(str(slug), e)
             log.warning(
-                "skipping MCP server %s (%s): %s", slug, transport, e
+                "skipping MCP server %s (%s): %s", slug, transport, message
             )
-            load_errors[str(slug)] = str(e)
+            load_errors[str(slug)] = message
             continue
         grants_by_slug[slug] = grants or {}
         server_id_by_slug[slug] = str(sid)
@@ -1251,8 +1472,9 @@ async def load_workspace_mcp_tools(
         try:
             server_tools = await client.get_tools(server_name=slug)
         except Exception as e:
-            log.warning("failed to load tools from MCP server %s: %s", slug, e)
-            load_errors[str(slug)] = str(e)
+            message = _format_mcp_load_error(str(slug), e)
+            log.warning("failed to load tools from MCP server %s: %s", slug, message)
+            load_errors[str(slug)] = message
             continue
         grants = grants_by_slug.get(slug, {})
         allowed_tools: list[BaseTool] = []

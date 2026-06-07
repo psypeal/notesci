@@ -2157,6 +2157,22 @@ def _format_mcp_tool_status(
         joined = f"{', '.join(front)}..."
 
     q = _normalize_space_text(last_human_text or "")
+
+    def requested_server_alias_match(server: str) -> bool:
+        normalized = server.lower()
+        aliases = {
+            normalized,
+            normalized.replace("-", " "),
+            normalized.replace("_", " "),
+        }
+        if normalized == "scihub":
+            aliases.update({"sci-hub", "sci hub"})
+        if normalized == "paper-search":
+            aliases.add("paper search")
+        if normalized == "semantic-scholar":
+            aliases.add("semantic scholar")
+        return any(alias and alias in q for alias in aliases)
+
     if "zotero" in by_server and "collection" in q:
         collection_item_intent = any(
             token in q
@@ -2222,7 +2238,7 @@ def _format_mcp_tool_status(
 
     failure_guidance = ""
     requested_failed = [
-        server for server in failed_servers if server.lower() in q
+        server for server in failed_servers if requested_server_alias_match(server)
     ]
     if requested_failed:
         failed = "; ".join(
