@@ -367,7 +367,13 @@ fn ensure_started_at(pg_root: &Path, data_dir: &Path, _port: u16) -> Result<(), 
     // The logfile lives inside the data dir so it doesn't pollute
     // user space and rotates with the cluster's lifecycle.
     let logfile = data_dir.join("pg-startup.log");
-    let output = pg_command(pg_root, "pg_ctl")
+    let ctl_logfile = data_dir.join("pg-ctl-startup.log");
+    let ctl_stderr = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&ctl_logfile)
+        .map_err(|e| format!("open {}: {e}", ctl_logfile.display()))?;
+    let status = pg_command(pg_root, "pg_ctl")
         .args([
             "-D",
             &data_dir.to_string_lossy(),
@@ -377,18 +383,22 @@ fn ensure_started_at(pg_root: &Path, data_dir: &Path, _port: u16) -> Result<(), 
             "start",
         ])
         .stdout(Stdio::null())
-        .stderr(Stdio::piped())
-        .output()
+        // Do not pipe pg_ctl start stderr here. On Windows, the launched
+        // postgres.exe postmaster can inherit the pipe handle, so
+        // Command::output() may wait forever for EOF while Postgres is already
+        // healthy. Write stderr to a real file and wait only for pg_ctl.
+        .stderr(Stdio::from(ctl_stderr))
+        .status()
         .map_err(|e| format!("pg_ctl start spawn: {e}"))?;
 
-    if output.status.success() {
+    if status.success() {
         return Ok(());
     }
 
     if pg_status_running(pg_root, data_dir) {
         info!(
             "pg: embedded instance is running after pg_ctl start returned {}",
-            output.status
+            status
         );
         return Ok(());
     }
@@ -398,12 +408,15 @@ fn ensure_started_at(pg_root: &Path, data_dir: &Path, _port: u16) -> Result<(), 
     {
         info!(
             "pg: embedded instance recovered after pg_ctl start returned {}",
-            output.status
+            status
         );
         return Ok(());
     }
 
-    let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+    let stderr = read_tail_lossy(&ctl_logfile, 4096)
+        .unwrap_or_default()
+        .trim()
+        .to_string();
     let detail = if stderr.is_empty() {
         String::new()
     } else {
@@ -411,10 +424,25 @@ fn ensure_started_at(pg_root: &Path, data_dir: &Path, _port: u16) -> Result<(), 
     };
     Err(format!(
         "pg_ctl start exited {}{}; see {}",
-        output.status,
+        status,
         detail,
         logfile.display()
     ))
+}
+
+fn read_tail_lossy(path: &Path, max_bytes: usize) -> std::io::Result<String> {
+    use std::io::{Read, Seek, SeekFrom};
+
+    let mut file = std::fs::OpenOptions::new().read(true).open(path)?;
+    let len = file.metadata()?.len();
+    if len > max_bytes as u64 {
+        file.seek(SeekFrom::End(-(max_bytes as i64)))?;
+    } else {
+        file.seek(SeekFrom::Start(0))?;
+    }
+    let mut buf = Vec::new();
+    file.read_to_end(&mut buf)?;
+    Ok(String::from_utf8_lossy(&buf).into_owned())
 }
 
 fn pg_status_running(pg_root: &Path, data_dir: &Path) -> bool {

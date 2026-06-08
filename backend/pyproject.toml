@@ -1,6 +1,6 @@
 [project]
 name = "notesci-backend"
-version = "0.1.36"
+version = "0.1.37"
 description = "notesci backend — research-grounded chat workspace API"
 requires-python = ">=3.12"
 dependencies = [
