@@ -197,36 +197,9 @@ from .ratelimit import enforce as rate_enforce
 from .sweeper import sweep_loop
 
 
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    _ensure_psycopg_compatible_event_loop()
-    await init_pool()
-    async with get_conn() as conn:
-        applied = await apply_migrations(conn)
-        if applied:
-            logger.info("applied migrations: %s", applied)
-    # Eagerly initialise the Fernet (or warn if NOTESCI_SECRET_KEY is unset)
-    # so operators learn at startup, not on the first MCP install.
-    from .crypto import get_fernet
-    get_fernet()
-    # Bootstrap the user-content directory tree (~/.config/notesci/* and
-    # ~/.local/share/notesci/*). Idempotent. Seeds README format-specs
-    # so users — and the agent acting on their behalf — know where to
-    # drop custom skills and MCP recipes. See user_content.py.
-    from .user_content import bootstrap as _bootstrap_user_content
-    _bootstrap_user_content()
-    app.state.email = build_sender()
-    app.state.background_tasks: set[asyncio.Task] = set()
-    # Mark abandoned draft workflows as failed. If the process died
-    # mid-workflow the orchestrator task is gone but the row still says
-    # ``drafting`` / ``reviewing`` — surface the failure so the UI
-    # doesn't poll a stale state forever.
-    #
-    # Multi-worker safe: take a pg advisory lock so only one worker
-    # actually runs the sweep. Bumped the staleness threshold from
-    # 15m to 60m because long-running drafts (large panel + max
-    # iterations on a slow model) legitimately exceed 15m and we
-    # don't want to false-positive failure them.
+async def _startup_workflow_sweep() -> None:
+    """Mark abandoned draft workflows after the API is already accepting traffic."""
+
     _SWEEP_LOCK_KEY = 0x4E4F5445_5343495F  # "NOTESCI_" (8 ascii bytes)
     try:
         async with get_conn() as conn:
@@ -258,14 +231,15 @@ async def lifespan(app: FastAPI):
                     await conn.commit()
     except Exception:
         logger.exception("startup workflow sweep failed")
-    # Backfill: when a Fernet key is configured, opportunistically re-
-    # encrypt any plaintext header/env values on existing mcp_servers
-    # rows (those written before the key was provisioned). Idempotent —
-    # already-encrypted values carry the ``fernet:`` prefix and pass
-    # through encrypt_config_secrets unchanged.
+
+
+async def _startup_mcp_secret_backfill() -> None:
+    """Opportunistically encrypt old MCP secrets without blocking startup."""
+
     _BACKFILL_LOCK_KEY = 0x4E4F5445_5343495E  # "NOTESCI^"
     try:
         from .crypto import encrypt_config_secrets, get_fernet
+
         if get_fernet() is not None:
             async with get_conn() as conn:
                 cur = await conn.execute(
@@ -307,6 +281,29 @@ async def lifespan(app: FastAPI):
                         await conn.commit()
     except Exception:
         logger.exception("startup mcp secret backfill failed")
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    startup_start = time.perf_counter()
+    _ensure_psycopg_compatible_event_loop()
+    await init_pool()
+    async with get_conn() as conn:
+        applied = await apply_migrations(conn)
+        if applied:
+            logger.info("applied migrations: %s", applied)
+    # Eagerly initialise the Fernet (or warn if NOTESCI_SECRET_KEY is unset)
+    # so operators learn at startup, not on the first MCP install.
+    from .crypto import get_fernet
+    get_fernet()
+    # Bootstrap the user-content directory tree (~/.config/notesci/* and
+    # ~/.local/share/notesci/*). Idempotent. Seeds README format-specs
+    # so users — and the agent acting on their behalf — know where to
+    # drop custom skills and MCP recipes. See user_content.py.
+    from .user_content import bootstrap as _bootstrap_user_content
+    _bootstrap_user_content()
+    app.state.email = build_sender()
+    app.state.background_tasks: set[asyncio.Task] = set()
     # Load per-workspace provider API keys from the DB and push them
     # into runtime settings + env so LangChain picks them up. The
     # single-user desktop app installs into a fresh workspace and
@@ -378,7 +375,14 @@ async def lifespan(app: FastAPI):
         # See memory/sweeper.py — picks up jobs idle >= IDLE_EXTRACT_SECONDS
         # and enforces the per-scope row cap inline after each extraction.
         from .memory.sweeper import memory_sweep_loop
+
+        _spawn(_startup_workflow_sweep(), label="startup_workflow_sweep")
+        _spawn(_startup_mcp_secret_backfill(), label="startup_mcp_secret_backfill")
         _spawn(memory_sweep_loop(120), label="memory_sweep_loop")
+        logger.info(
+            "backend readiness gate finished in %.3fs",
+            time.perf_counter() - startup_start,
+        )
         try:
             yield
         finally:
