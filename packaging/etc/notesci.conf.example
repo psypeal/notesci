@@ -1,16 +1,18 @@
-# notesci configuration — sourced by systemd as EnvironmentFile.
+# notesci configuration — read by the notesci desktop launcher.
 # Format: KEY=VALUE (no `export`, no shell expansion, no spaces around =).
 #
 # Edit values, then: sudo systemctl restart notesci
 #
-# File permissions: mode 0640, owned by root:notesci. Keep API keys
-# private. After editing, journalctl -u notesci -f to confirm.
+# File permissions: mode 0644, owned by root:root. The desktop launcher
+# runs as the logged-in user, so it must be able to read DATABASE_URL.
+# Prefer configuring provider API keys in the notesci UI instead of here
+# on shared machines.
 
 # ── Database ────────────────────────────────────────────────────
 # Auto-generated at install time. The postinst script syncs this
 # password to the Postgres role on every upgrade — if you change it
 # here, also `ALTER ROLE notesci WITH PASSWORD '...'` in psql.
-NOTESCI_DATABASE_URL=postgresql://notesci:__DB_PASSWORD__@localhost:5432/notesci
+DATABASE_URL=postgresql://notesci:__DB_PASSWORD__@localhost:5432/notesci
 NOTESCI_DB_PASSWORD=__DB_PASSWORD__
 
 # ── Operator admin token ───────────────────────────────────────
@@ -21,6 +23,8 @@ NOTESCI_ADMIN_TOKEN=__ADMIN_TOKEN__
 # ── LLM provider API keys ──────────────────────────────────────
 # At least one is required for /chat to return replies. notesci is
 # provider-agnostic; missing providers silently fall out of the picker.
+# Prefer setting provider keys in the notesci UI. Values placed here are
+# readable by local OS users because the desktop launcher needs this file.
 # ANTHROPIC_API_KEY=
 # OPENAI_API_KEY=
 # GOOGLE_API_KEY=
