@@ -40,9 +40,10 @@ const PG_DATABASE: &str = "notesci";
 const PG_DATA_SUBDIR: &str = "pg-data-16";
 const BOOTSTRAP_MARKER: &str = ".notesci-bootstrap-v1";
 
-/// Embedded PG startup budget — initdb on a clean install is the long
-/// pole (~10s). Subsequent boots are <1s.
-const STARTUP_TIMEOUT: Duration = Duration::from_secs(45);
+/// Embedded PG startup budget. Normal starts return quickly because we poll the
+/// actual port; the longer budget covers Windows crash recovery / antivirus
+/// delays after an unclean shutdown.
+const STARTUP_TIMEOUT: Duration = Duration::from_secs(90);
 const POLL_INTERVAL: Duration = Duration::from_millis(150);
 #[cfg(windows)]
 const CREATE_NO_WINDOW: u32 = 0x08000000;
@@ -358,31 +359,72 @@ fn write_runtime_conf(pg_root: &Path, data_dir: &Path) -> Result<(), String> {
 }
 
 fn ensure_started_at(pg_root: &Path, data_dir: &Path, _port: u16) -> Result<(), String> {
+    if pg_status_running(pg_root, data_dir) {
+        info!("pg: embedded instance already running for {}", data_dir.display());
+        return Ok(());
+    }
+
     // The logfile lives inside the data dir so it doesn't pollute
     // user space and rotates with the cluster's lifecycle.
     let logfile = data_dir.join("pg-startup.log");
-    let r = pg_command(pg_root, "pg_ctl")
+    let output = pg_command(pg_root, "pg_ctl")
         .args([
             "-D",
             &data_dir.to_string_lossy(),
             "-l",
             &logfile.to_string_lossy(),
-            "-w", // wait for startup; pg_ctl exits 0 when ready
+            "-W", // do not trust pg_ctl's own readiness interpretation
             "start",
         ])
         .stdout(Stdio::null())
         .stderr(Stdio::piped())
-        .status()
+        .output()
         .map_err(|e| format!("pg_ctl start spawn: {e}"))?;
-    // pg_ctl returns 0 either when starting OR when already running —
-    // both are fine for our purposes. Surface any other code.
-    if !r.success() {
-        return Err(format!(
-            "pg_ctl start exited {r}; see {}",
-            logfile.display()
-        ));
+
+    if output.status.success() {
+        return Ok(());
     }
-    Ok(())
+
+    if pg_status_running(pg_root, data_dir) {
+        info!(
+            "pg: embedded instance is running after pg_ctl start returned {}",
+            output.status
+        );
+        return Ok(());
+    }
+
+    if wait_for_port("127.0.0.1", _port, STARTUP_TIMEOUT).is_ok()
+        && pg_status_running(pg_root, data_dir)
+    {
+        info!(
+            "pg: embedded instance recovered after pg_ctl start returned {}",
+            output.status
+        );
+        return Ok(());
+    }
+
+    let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+    let detail = if stderr.is_empty() {
+        String::new()
+    } else {
+        format!("; stderr: {stderr}")
+    };
+    Err(format!(
+        "pg_ctl start exited {}{}; see {}",
+        output.status,
+        detail,
+        logfile.display()
+    ))
+}
+
+fn pg_status_running(pg_root: &Path, data_dir: &Path) -> bool {
+    pg_command(pg_root, "pg_ctl")
+        .args(["-D", &data_dir.to_string_lossy(), "status"])
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status()
+        .map(|status| status.success())
+        .unwrap_or(false)
 }
 
 fn wait_for_port(host: &str, port: u16, timeout: Duration) -> Result<(), String> {
