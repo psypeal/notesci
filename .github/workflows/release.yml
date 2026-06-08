@@ -57,7 +57,8 @@ jobs:
             libjavascriptcoregtk-4.1-dev librsvg2-dev \
             libayatana-appindicator3-dev build-essential pkg-config \
             rpm fakeroot patchelf \
-            libpq-dev git curl unzip
+            libpq-dev git curl unzip \
+            python3.12 python3.12-venv python3-pip
           if apt-cache show libfuse2t64 >/dev/null 2>&1; then
             sudo apt-get install -y --no-install-recommends libfuse2t64
           else
@@ -76,6 +77,9 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install Python packaging tools
+        run: python -m pip install --upgrade pip uv
 
       - name: Cache Cargo build outputs
         uses: actions/cache@v4
@@ -109,20 +113,56 @@ jobs:
       - name: Install tauri-cli
         run: cargo install --locked tauri-cli --version "^2"
 
-      # The .deb uses SYSTEM Postgres (postgresql-16 + -pgvector are
-      # dpkg deps; pg.rs takes Mode::System). bundle.resources is GLOBAL
-      # across targets, so build the .deb FIRST — before any pg/ tree is
-      # staged — otherwise it would embed PG and flip to Mode::Embedded.
-      - name: Build .deb (system Postgres, no embedded pg/)
+      # The .deb uses SYSTEM Postgres and the custom /opt/notesci layout.
+      # Do not use raw `cargo tauri build --bundles deb`: it omits backend,
+      # frontend, wheels, and maintainer scripts needed by installed Linux apps.
+      - name: Build .deb (system Postgres, /opt/notesci layout)
+        env:
+          RELEASE_INPUT_VERSION: ${{ github.event.inputs.version || '' }}
         run: |
-          # resources/{pg,python} hold only .gitkeep here → the .deb stays
-          # Mode::System + Installed layout (/opt/notesci). Guard on the
-          # actual binaries since the dirs always exist (placeholders keep
-          # bundle.resources valid).
+          VERSION="${RELEASE_INPUT_VERSION#v}"
+          if [ -z "$VERSION" ]; then
+            REF_NAME="${GITHUB_REF_NAME:-}"
+            case "$REF_NAME" in
+              v*) VERSION="${REF_NAME#v}" ;;
+            esac
+          fi
+          if [ -z "$VERSION" ]; then
+            VERSION="$(grep -E '^version = ' backend/pyproject.toml | head -1 | cut -d'"' -f2)"
+          fi
+
+          # resources/{pg,python} hold only .gitkeep here. The Debian package
+          # is assembled by packaging/build-deb.sh, not Tauri resources.
           test ! -e desktop/src-tauri/resources/pg/bin/postgres
           test ! -e desktop/src-tauri/resources/python/bin/python3
-          cd desktop/src-tauri
-          cargo tauri build --bundles deb
+          ./packaging/build-deb.sh "$VERSION"
+
+      - name: Assert .deb contains full backend bundle
+        run: |
+          DEB="$(ls -1 build/notesci_*_amd64.deb | head -1)"
+          tmp="$(mktemp -d)"
+          trap 'rm -rf "$tmp"' EXIT
+          dpkg-deb -e "$DEB" "$tmp/DEBIAN"
+          dpkg-deb -x "$DEB" "$tmp/root"
+
+          test -x "$tmp/root/opt/notesci/bin/notesci"
+          test -L "$tmp/root/usr/bin/notesci"
+          test -f "$tmp/root/opt/notesci/backend/src/notesci/main.py"
+          test -f "$tmp/root/opt/notesci/frontend/index.html"
+          test -f "$tmp/root/opt/notesci/wheels/requirements.txt"
+          test -x "$tmp/DEBIAN/postinst"
+
+          wheels="$(find "$tmp/root/opt/notesci/wheels" -name '*.whl' -type f | wc -l)"
+          if [ "$wheels" -lt 20 ]; then
+            echo "Expected full wheel bundle, found only $wheels wheels" >&2
+            exit 1
+          fi
+
+          bytes="$(stat -c '%s' "$DEB")"
+          if [ "$bytes" -lt 50000000 ]; then
+            echo "Debian package is too small for the full dependency bundle: $bytes bytes" >&2
+            exit 1
+          fi
 
       - name: Stage embedded Postgres + Python + backend (linux)
         run: |
@@ -162,7 +202,7 @@ jobs:
         with:
           name: linux-bundles
           path: |
-            desktop/src-tauri/target/release/bundle/deb/*.deb
+            build/*.deb
             desktop/src-tauri/target/release/bundle/rpm/*.rpm
             desktop/src-tauri/target/release/bundle/appimage/*.AppImage
           if-no-files-found: warn
