@@ -111,7 +111,7 @@ jobs:
           pnpm build
 
       - name: Install tauri-cli
-        run: cargo install --locked tauri-cli --version "^2"
+        run: cargo install --locked tauri-cli --version "^2" --force
 
       # The .deb uses SYSTEM Postgres and the custom /opt/notesci layout.
       # Do not use raw `cargo tauri build --bundles deb`: it omits backend,
@@ -282,7 +282,7 @@ jobs:
       - name: Build Tauri (.dmg, arm64)
         run: |
           cd desktop/src-tauri
-          cargo install --locked tauri-cli --version "^2"
+          cargo install --locked tauri-cli --version "^2" --force
           cargo tauri build --bundles dmg --target aarch64-apple-darwin
 
       - name: Upload artifacts
@@ -429,7 +429,7 @@ jobs:
         shell: pwsh
         run: |
           cd desktop\src-tauri
-          cargo install --locked tauri-cli --version "^2"
+          cargo install --locked tauri-cli --version "^2" --force
           cargo tauri build --bundles nsis
 
       - name: Smoke test Windows installer
