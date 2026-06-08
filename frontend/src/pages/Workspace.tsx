@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, lazy, Suspense } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router'
 import { TopBar, SidebarGlyph, type LayoutMode } from '../components/workspace/TopBar'
 import {
@@ -35,23 +35,12 @@ import {
   type IngestionJob,
 } from '../components/workspace/IngestionTracker'
 import { UploadProgressView } from '../components/workspace/UploadProgressView'
-import { api, apiBlob, apiForm, errorMessage, getToken, type ApiError } from '../lib/api'
+import { api, apiForm, errorMessage, getToken, type ApiError } from '../lib/api'
 import { initialsFor } from '../lib/initials'
 import { getProviders, resolveUploadModel } from '../lib/models'
 import { readPrefs } from '../lib/prefs'
 import { isSafeHttpUrl } from '../lib/redirect'
-import {
-  openInSystemBrowser,
-  openLivePreview,
-  cancelPreviewFetch,
-} from '../lib/tauri'
-
-// Lazy: only pulled in when an external source is reviewed as a PDF.
-const LazyPdfReader = lazy(() =>
-  import('../components/workspace/PdfReader').then((m) => ({
-    default: m.PdfReader,
-  })),
-)
+import { openInSystemBrowser } from '../lib/tauri'
 
 interface MeOut {
   id: string
@@ -88,16 +77,6 @@ const UUID_RE =
 
 function isUuidLike(value: string): boolean {
   return UUID_RE.test(value)
-}
-
-function isLikelyDirectPdfUrl(url: string): boolean {
-  try {
-    const u = new URL(url)
-    const path = u.pathname.toLowerCase()
-    return path.endsWith('.pdf') || path.includes('/pdf/') || path.includes('articlepdf')
-  } catch {
-    return /\.pdf(?:[?#]|$)/i.test(url)
-  }
 }
 
 /** Resolve a stored layout value to a current LayoutMode. Migrates the
@@ -1128,35 +1107,8 @@ export function WorkspacePage() {
   } | null>(null)
   const [externalPreviewLoading, setExternalPreviewLoading] = useState(false)
   const [externalPreviewError, setExternalPreviewError] = useState<string | null>(null)
-  // Live source review. Direct PDF URLs are fetched as bytes through the
-  // backend and rendered in this modal. Non-PDF live pages open in the
-  // normal Notesci pop-up window so publisher layouts stay interactive and
-  // closeable.
-  const [livePreview, setLivePreview] = useState(false)
-  const [liveLoading, setLiveLoading] = useState(false)
-  const [livePdfBlob, setLivePdfBlob] = useState<Blob | null>(null)
-  const [liveHtml, setLiveHtml] = useState<string | null>(null)
-  const [liveError, setLiveError] = useState<string | null>(null)
-  const liveFetchAbortRef = useRef<AbortController | null>(null)
-  const resetLive = useCallback(() => {
-    liveFetchAbortRef.current?.abort()
-    liveFetchAbortRef.current = null
-    cancelPreviewFetch()
-    setLivePreview(false)
-    setLiveLoading(false)
-    setLivePdfBlob(null)
-    setLiveHtml(null)
-    setLiveError(null)
-  }, [])
   const openExternalSource = useCallback((url: string) => {
     if (!isSafeHttpUrl(url)) return
-    liveFetchAbortRef.current?.abort()
-    liveFetchAbortRef.current = null
-    setLivePreview(false)
-    setLiveLoading(false)
-    setLivePdfBlob(null)
-    setLiveHtml(null)
-    setLiveError(null)
     setExternalSource({ url })
   }, [])
   useEffect(() => {
@@ -1192,143 +1144,27 @@ export function WorkspacePage() {
       })
     return () => ac.abort()
   }, [externalSource])
-  const openLivePageWindow = useCallback(
-    (url: string) => {
-      liveFetchAbortRef.current?.abort()
-      liveFetchAbortRef.current = null
-      setLivePreview(false)
-      setLiveLoading(false)
-      setLivePdfBlob(null)
-      setLiveHtml(null)
-      setLiveError(null)
-      openLivePreview(url, externalPreview?.title || null)
-    },
-    [externalPreview],
-  )
-
-  // "View live page": non-PDF URLs open the normal Notesci pop-up. Direct
-  // PDF URLs render in this modal via the backend byte-fetch endpoint.
-  const onViewLivePage = useCallback(
-    (url: string) => {
-      liveFetchAbortRef.current?.abort()
-      setLivePdfBlob(null)
-      setLiveHtml(null)
-      setLiveError(null)
-
-      if (!isLikelyDirectPdfUrl(url)) {
-        setLivePreview(false)
-        setLiveLoading(false)
-        openLivePreview(url, externalPreview?.title || null)
-        return
-      }
-
-      setLivePreview(true)
-      setLiveLoading(true)
-      const ac = new AbortController()
-      liveFetchAbortRef.current = ac
-      void apiBlob('/external/fetch', {
-        method: 'POST',
-        auth: true,
-        signal: ac.signal,
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ url }),
-      })
-        .then((blob) => {
-          if (ac.signal.aborted) return
-          setLivePdfBlob(
-            blob.type === 'application/pdf'
-              ? blob
-              : new Blob([blob], { type: 'application/pdf' }),
-          )
-          setLiveHtml(null)
-          setLiveError(null)
-          setLiveLoading(false)
-        })
-        .catch((err) => {
-          if (ac.signal.aborted) return
-          setLiveLoading(false)
-          setLiveError(
-            errorMessage(err, "Couldn't fetch this PDF here. Open the live page instead."),
-          )
-        })
-        .finally(() => {
-          if (liveFetchAbortRef.current === ac) liveFetchAbortRef.current = null
-        })
-    },
-    [externalPreview],
-  )
-  // Safety net: if the PDF byte fetch stalls, stop the spinner after a
-  // while and offer explicit alternatives.
-  useEffect(() => {
-    if (!liveLoading) return
-    const t = window.setTimeout(() => {
-      setLiveLoading(false)
-      setLiveError(
-        'The PDF preview is taking longer than expected. Retry, open the live page, or use “Open in browser”.',
-      )
-    }, 90_000)
-    return () => window.clearTimeout(t)
-  }, [liveLoading])
-  // Add the reviewed source to the project. Smart about what we have:
-  //  - a PDF fetched via the external fetch endpoint → multipart upload
-  //    (/materials/ingest-pdf), which works for publishers that 403 a
-  //    server-side fetch;
-  //  - HTML text captured from the live pop-up → text ingest;
-  //  - otherwise → the plain server-side URL ingest.
+  // Add the reviewed source through the normal URL ingest path. The modal
+  // intentionally avoids in-app live publisher pages because security checks
+  // can stall inside embedded webviews; users can verify those pages in the
+  // system browser before adding.
   const addExternalSourceToProject = useCallback(async () => {
     if (!externalSource || !activeProjectId) return
     setExternalAdding(true)
     try {
       const modelToSend = await resolveModelForRequest()
-      let created: { material_id: string; job_id?: string | null }
-      if (livePdfBlob) {
-        const fd = new FormData()
-        fd.append('project_id', activeProjectId)
-        if (modelToSend) fd.append('model', modelToSend)
-        const name = (() => {
-          try {
-            const u = new URL(externalSource.url)
-            const base = u.pathname.split('/').filter(Boolean).pop() || 'source'
-            return base.toLowerCase().endsWith('.pdf') ? base : `${base}.pdf`
-          } catch {
-            return 'source.pdf'
-          }
-        })()
-        fd.append('file', livePdfBlob, name)
-        created = await api<{ material_id: string; job_id?: string | null }>(
-          '/materials/ingest-pdf',
-          { method: 'POST', auth: true, body: fd },
-        )
-      } else if (liveHtml) {
-        created = await api<{ material_id: string; job_id?: string | null }>(
-          '/materials/ingest',
-          {
-            method: 'POST',
-            auth: true,
-            body: JSON.stringify({
-              project_id: activeProjectId,
-              text: liveHtml,
-              title: externalPreview?.title || externalSource.url,
-              source_type: 'url',
-              uri: externalSource.url,
-              metadata: { original_url: externalSource.url, captured_via: 'in_app_browser' },
-            }),
-          },
-        )
-      } else {
-        created = await api<{ material_id: string; job_id?: string | null }>(
-          '/materials/ingest-url',
-          {
-            method: 'POST',
-            auth: true,
-            body: JSON.stringify({
-              project_id: activeProjectId,
-              url: externalSource.url,
-              model: modelToSend,
-            }),
-          },
-        )
-      }
+      const created = await api<{ material_id: string; job_id?: string | null }>(
+        '/materials/ingest-url',
+        {
+          method: 'POST',
+          auth: true,
+          body: JSON.stringify({
+            project_id: activeProjectId,
+            url: externalSource.url,
+            model: modelToSend,
+          }),
+        },
+      )
       startIngestionJob({
         materialId: created.material_id,
         jobId: created.job_id ?? null,
@@ -1342,7 +1178,7 @@ export function WorkspacePage() {
     } finally {
       setExternalAdding(false)
     }
-  }, [activeProjectId, externalSource, externalPreview, liveHtml, livePdfBlob, refreshMaterials, resolveModelForRequest, startIngestionJob, toast])
+  }, [activeProjectId, externalSource, refreshMaterials, resolveModelForRequest, startIngestionJob, toast])
   const onJumpToCitation = (detail: import('../lib/markdown').CitationClick) => {
     if (!isUuidLike(detail.materialId) && detail.materialUrl && isSafeHttpUrl(detail.materialUrl)) {
       openExternalSource(detail.materialUrl)
@@ -1989,12 +1825,7 @@ export function WorkspacePage() {
         <Modal
           title="External source"
           description="Review this source before deciding whether to add it to the project."
-          onClose={() => {
-            liveFetchAbortRef.current?.abort()
-            liveFetchAbortRef.current = null
-            cancelPreviewFetch()
-            setExternalSource(null)
-          }}
+          onClose={() => setExternalSource(null)}
           width={980}
         >
           <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
@@ -2006,17 +1837,6 @@ export function WorkspacePage() {
                 minWidth: 0,
               }}
             >
-              {livePreview && (
-                <button
-                  type="button"
-                  className="ns-btn ghost tiny"
-                  style={{ flexShrink: 0 }}
-                  onClick={resetLive}
-                  title="Back to summary"
-                >
-                  ← Back
-                </button>
-              )}
               <div
                 style={{
                   flex: 1,
@@ -2043,7 +1863,7 @@ export function WorkspacePage() {
                 type="button"
                 className="ns-btn"
                 style={{ minWidth: 170, justifyContent: 'center', flexShrink: 0 }}
-                disabled={!activeProjectId || externalAdding || liveLoading}
+                disabled={!activeProjectId || externalAdding}
                 onClick={() => void addExternalSourceToProject()}
               >
                 {externalAdding ? 'Adding…' : 'Add to project sources'}
@@ -2054,108 +1874,12 @@ export function WorkspacePage() {
                 height: 'min(68vh, 720px)',
                 border: '1px solid var(--color-rule)',
                 borderRadius: 12,
-                overflow: livePreview && livePdfBlob ? 'hidden' : 'auto',
+                overflow: 'auto',
                 background: '#fff',
-                padding: livePreview && livePdfBlob ? 0 : 20,
-                display: livePreview ? 'flex' : 'block',
-                flexDirection: 'column',
+                padding: 20,
               }}
             >
-              {livePreview ? (
-                liveLoading ? (
-                  <div
-                    style={{
-                      flex: 1,
-                      display: 'flex',
-                      flexDirection: 'column',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      gap: 12,
-                      color: 'var(--color-muted)',
-                      fontSize: 13,
-                      textAlign: 'center',
-                    }}
-                  >
-                    <span className="spinner" aria-hidden />
-                    <div style={{ maxWidth: 420, lineHeight: 1.6 }}>
-                      Fetching the PDF through Notesci so it can render in this
-                      review modal. If this takes too long, retry, open the live
-                      page, or use “Open in browser”.
-                    </div>
-                  </div>
-                ) : livePdfBlob ? (
-                  <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
-                    <Suspense
-                      fallback={
-                        <div style={{ flex: 1, display: 'grid', placeItems: 'center', color: 'var(--color-muted)', fontSize: 13 }}>
-                          Rendering PDF…
-                        </div>
-                      }
-                    >
-                      <LazyPdfReader
-                        blob={livePdfBlob}
-                        title={externalPreview?.title || externalSource.url}
-                      />
-                    </Suspense>
-                  </div>
-                ) : liveError ? (
-                  <div
-                    style={{
-                      flex: 1,
-                      display: 'flex',
-                      flexDirection: 'column',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      gap: 14,
-                      textAlign: 'center',
-                      padding: 24,
-                    }}
-                  >
-                    <div style={{ color: 'var(--color-muted)', fontSize: 13, lineHeight: 1.6, maxWidth: 460 }}>
-                      {liveError}
-                    </div>
-                    <div style={{ display: 'flex', gap: 10 }}>
-                      <button
-                        type="button"
-                        className="ns-btn ghost"
-                        onClick={() => onViewLivePage(externalSource.url)}
-                      >
-                        Retry
-                      </button>
-                      <button
-                        type="button"
-                        className="ns-btn"
-                        onClick={() => openLivePageWindow(externalSource.url)}
-                      >
-                        Open live page
-                      </button>
-                      <button
-                        type="button"
-                        className="ns-btn ghost"
-                        onClick={() => openInSystemBrowser(externalSource.url)}
-                      >
-                        Open in browser
-                      </button>
-                    </div>
-                  </div>
-                ) : liveHtml ? (
-                  <article style={{ maxWidth: 820, margin: '0 auto' }}>
-                    <pre
-                      style={{
-                        margin: 0,
-                        whiteSpace: 'pre-wrap',
-                        wordBreak: 'break-word',
-                        fontFamily: 'var(--font-serif), Georgia, serif',
-                        fontSize: 15,
-                        lineHeight: 1.7,
-                        color: 'var(--color-ink)',
-                      }}
-                    >
-                      {liveHtml}
-                    </pre>
-                  </article>
-                ) : null
-              ) : externalPreviewLoading ? (
+              {externalPreviewLoading ? (
                 <div style={{ color: 'var(--color-muted)', fontSize: 13 }}>
                   Fetching readable web content…
                 </div>
@@ -2189,22 +1913,15 @@ export function WorkspacePage() {
                       maxWidth: 480,
                     }}
                   >
-                    This publisher blocks automated fetching, so it cannot be
-                    added directly from Notesci. Open the live page in the
-                    Notesci pop-up to review the layout; use “Open in browser”
-                    only as a fallback.
+                    This publisher blocks automated fetching, so Notesci can’t
+                    show a readable extract here. Use “Open in browser” to
+                    review the source directly, then add it if it is the right
+                    item.
                   </div>
                   <div style={{ display: 'flex', gap: 10, marginTop: 4 }}>
                     <button
                       type="button"
                       className="ns-btn"
-                      onClick={() => onViewLivePage(externalSource.url)}
-                    >
-                      View live page
-                    </button>
-                    <button
-                      type="button"
-                      className="ns-btn ghost"
                       onClick={() => openInSystemBrowser(externalSource.url)}
                     >
                       Open in browser
@@ -2248,15 +1965,15 @@ export function WorkspacePage() {
                     }}
                   >
                     <span style={{ fontSize: 12.5, color: 'var(--color-muted)' }}>
-                      Readable extract — open the live page for figures and layout.
+                      Readable extract. Open in browser for figures and layout.
                     </span>
                     <button
                       type="button"
                       className="ns-btn ghost"
                       style={{ marginLeft: 'auto' }}
-                      onClick={() => onViewLivePage(externalSource.url)}
+                      onClick={() => openInSystemBrowser(externalSource.url)}
                     >
-                      View live page
+                      Open in browser
                     </button>
                   </div>
                 </article>
