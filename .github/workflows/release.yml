@@ -113,6 +113,11 @@ jobs:
       - name: Install tauri-cli
         run: cargo install --locked tauri-cli --version "^2" --force
 
+      - name: Clean stale Linux bundle artifacts
+        run: |
+          rm -f build/*.deb
+          rm -rf desktop/src-tauri/target/release/bundle
+
       # The .deb uses SYSTEM Postgres and the custom /opt/notesci layout.
       # Do not use raw `cargo tauri build --bundles deb`: it omits backend,
       # frontend, wheels, and maintainer scripts needed by installed Linux apps.
@@ -279,6 +284,11 @@ jobs:
           rm -rf "$R/backend"  && cp -r build/backend-bundle     "$R/backend"
           rm -rf "$R/frontend" && cp -r frontend/dist            "$R/frontend"
 
+      - name: Clean stale macOS bundle artifacts
+        run: |
+          rm -rf desktop/src-tauri/target/aarch64-apple-darwin/release/bundle
+          rm -rf desktop/src-tauri/target/release/bundle
+
       - name: Build Tauri (.dmg, arm64)
         run: |
           cd desktop/src-tauri
@@ -424,6 +434,11 @@ jobs:
           if ($LASTEXITCODE -ne 0) {
             throw "postgres.exe -V failed with exit code $LASTEXITCODE"
           }
+
+      - name: Clean stale Windows bundle artifacts
+        shell: pwsh
+        run: |
+          Remove-Item -LiteralPath "desktop/src-tauri/target/release/bundle" -Recurse -Force -ErrorAction SilentlyContinue
 
       - name: Build Tauri (.exe NSIS)
         shell: pwsh
