@@ -32,12 +32,12 @@ use std::fs::OpenOptions;
 #[cfg(windows)]
 use std::os::windows::process::CommandExt;
 use std::path::Path;
-use std::io::{Read, Seek, SeekFrom, Write};
+use std::io::{ErrorKind, Read, Seek, SeekFrom, Write};
 use std::process::{Child, Command};
 use std::sync::Mutex;
 use std::thread;
 use std::time::{Duration, Instant};
-use std::net::{Shutdown, TcpStream};
+use std::net::TcpStream;
 use tauri::menu::{Menu, MenuItem};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 use tauri::webview::WebviewBuilder;
@@ -83,6 +83,7 @@ const STARTUP_POLL_INTERVAL: Duration = Duration::from_millis(120);
 const STARTUP_TIMEOUT_ENV: &str = "NOTESCI_BACKEND_STARTUP_TIMEOUT_SECS";
 const STARTUP_LOG_FILE: &str = "backend-startup.log";
 const STARTUP_LOG_TAIL_BYTES: usize = 8192;
+const ENV_FILE_ERROR_KEY: &str = "__NOTESCI_ENV_FILE_ERROR";
 #[cfg(windows)]
 const CREATE_NO_WINDOW: u32 = 0x08000000;
 
@@ -163,7 +164,9 @@ pub fn run() {
             // password + API keys.
             let env_overrides = load_env_file(&layout.env_file).unwrap_or_else(|e| {
                 warn!("could not load {}: {}", layout.env_file.display(), e);
-                HashMap::new()
+                let mut env = HashMap::new();
+                env.insert(ENV_FILE_ERROR_KEY.to_string(), e.to_string());
+                env
             });
             info!("loaded {} env vars from config", env_overrides.len());
             let startup_timeout = backend_startup_timeout(&env_overrides);
@@ -405,6 +408,20 @@ fn start_backend_blocking(
     mut env_overrides: HashMap<String, String>,
     startup_timeout: Duration,
 ) -> Result<(), String> {
+    let env_file_error = env_overrides.remove(ENV_FILE_ERROR_KEY);
+    if matches!(layout.kind, LayoutKind::Installed)
+        && !env_overrides.contains_key("DATABASE_URL")
+    {
+        let detail = env_file_error
+            .map(|err| format!(" Could not read {}: {err}.", layout.env_file.display()))
+            .unwrap_or_default();
+        return Err(format!(
+            "installed configuration is missing DATABASE_URL.{} Reinstall the package or check {} permissions.",
+            detail,
+            layout.env_file.display()
+        ));
+    }
+
     set_startup_status_on_main(
         &app,
         "Checking local database",
@@ -624,20 +641,29 @@ fn wait_for_readyz(addr: &str) -> Result<(), String> {
     stream
         .write_all(request.as_bytes())
         .map_err(|e| format!("readyz write failed: {e}"))?;
-    let _ = stream.shutdown(Shutdown::Write);
 
     let mut response = Vec::new();
     let mut buf = [0u8; 2048];
     loop {
-        let n = stream
-            .read(&mut buf)
-            .map_err(|e| format!("readyz read failed: {e}"))?;
-        if n == 0 {
-            break;
-        }
-        response.extend_from_slice(&buf[..n]);
-        if response.len() > 4096 {
-            break;
+        match stream.read(&mut buf) {
+            Ok(0) => break,
+            Ok(n) => {
+                response.extend_from_slice(&buf[..n]);
+                let response_text = String::from_utf8_lossy(&response);
+                if response_text.contains("\r\n\r\n") {
+                    break;
+                }
+                if response.len() > 4096 {
+                    break;
+                }
+            }
+            Err(e)
+                if matches!(e.kind(), ErrorKind::WouldBlock | ErrorKind::TimedOut)
+                    && !response.is_empty() =>
+            {
+                break;
+            }
+            Err(e) => return Err(format!("readyz read failed: {e}")),
         }
     }
     let response = String::from_utf8_lossy(&response);
