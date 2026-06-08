@@ -54,11 +54,38 @@ case "$1" in
     else
       # Re-install / upgrade — read existing password so we can sync
       # it to Postgres below (in case the role was dropped manually).
-      DB_PASS=$(grep -E '^NOTESCI_DB_PASSWORD=' "$CONFIG_FILE" | cut -d= -f2- | tr -d '"')
+      DB_PASS=$(grep -E '^NOTESCI_DB_PASSWORD=' "$CONFIG_FILE" | cut -d= -f2- | tr -d '"' || true)
+      if [ -z "$DB_PASS" ]; then
+        log "adding missing NOTESCI_DB_PASSWORD"
+        DB_PASS=$(head -c 32 /dev/urandom | base64 | tr -d '+/=' | head -c 40)
+        printf '\nNOTESCI_DB_PASSWORD=%s\n' "$DB_PASS" >> "$CONFIG_FILE"
+      fi
     fi
 
-    chown root:"$NS_GROUP" "$CONFIG_FILE"
-    chmod 0640 "$CONFIG_FILE"
+    # v0.1.33 accidentally wrote NOTESCI_DATABASE_URL, but the backend's
+    # pydantic settings field is database_url, which reads DATABASE_URL.
+    # Without this migration the backend starts against the dev default
+    # localhost:5433 and /readyz never becomes ready.
+    if grep -qE '^NOTESCI_DATABASE_URL=' "$CONFIG_FILE"; then
+      log "migrating NOTESCI_DATABASE_URL to DATABASE_URL"
+      if grep -qE '^DATABASE_URL=' "$CONFIG_FILE"; then
+        sed -i '/^NOTESCI_DATABASE_URL=/d' "$CONFIG_FILE"
+      else
+        sed -i 's/^NOTESCI_DATABASE_URL=/DATABASE_URL=/' "$CONFIG_FILE"
+      fi
+    fi
+
+    if ! grep -qE '^DATABASE_URL=' "$CONFIG_FILE"; then
+      log "adding missing DATABASE_URL"
+      printf '\nDATABASE_URL=postgresql://%s:%s@localhost:5432/%s\n' "$DB_USER" "$DB_PASS" "$DB_NAME" >> "$CONFIG_FILE"
+    fi
+
+    # The desktop application is launched by the logged-in user, not by
+    # the notesci system user. If this file is group-private, the launcher
+    # cannot read DATABASE_URL and the backend falls back to the dev default
+    # localhost:5433, causing /readyz to fail on installed .deb builds.
+    chown root:root "$CONFIG_FILE"
+    chmod 0644 "$CONFIG_FILE"
 
     # ── 3. Python venv (created on-target so it uses target's Python) ──
     # The .deb ships pre-downloaded wheels under /opt/notesci/wheels;
