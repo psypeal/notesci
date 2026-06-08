@@ -153,6 +153,8 @@ log "staging Tauri binary"
 install -d -m 0755 "$STAGE/opt/notesci/bin"
 install -m 0755 "$REPO_ROOT/desktop/src-tauri/target/release/notesci" \
   "$STAGE/opt/notesci/bin/notesci"
+install -d -m 0755 "$STAGE/usr/bin"
+ln -s /opt/notesci/bin/notesci "$STAGE/usr/bin/notesci"
 
 # ── Wheels → /opt/notesci/wheels (offline install bundle) ─────
 # Ship pre-downloaded wheels alongside a pinned requirements.txt so
