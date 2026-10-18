@@ -130,3 +130,35 @@ is upcoming. There is no signup, checkout or fabricated inquiry destination.
 The owner must confirm a monitored public email or approved contact form for
 trial inquiries/support before an actionable inquiry CTA can be added.
 No trial price, duration, quota or paid-plan price is invented.
+
+## Approved production publication, 18 October 2026
+
+The owner explicitly approved replacing the maintenance page through the
+existing authenticated Cloudflare editor. The complete tested module was
+copied back out of the editor and matched byte-for-byte before deployment.
+The editor reported zero problems after an explicit string-body conversion.
+
+- Active version: fef72f4b-0968-4b95-a0fa-e61c12ddeb46, Ready, 100% traffic.
+- Prior maintenance version: f58450b3-2a90-4381-9429-faa3ef36872c.
+- Deployed module source: 2add253e0c5ebd32db531b2adb08e018a7efd7cc.
+- Module SHA256: 6eeb4c8af68702fb08a26540d79ba244c6b9e8dd8f407242605410f0644d11e0.
+- The original maintenance module was saved locally as a rollback copy.
+
+Both HTTPS domains now load the approved page (www redirects to the apex).
+The homepage, index.html, CSS and all three SVG assets return 200. The legacy
+favicon redirect also passes. Live desktop/tablet/mobile review passes: the
+paired CTAs are 174x48px on larger screens and 335x48px in the 390px mobile
+stack, with visible focus and no horizontal overflow.
+
+Cloudflare adds its Web Analytics beacon to HTML at the edge. This setting
+was not changed in the publication task. The live verifier identifies only
+the observed standard beacon and still requires the application HTML/CSS/SVG
+contents to match source exactly; unknown changes continue to fail. See
+https://developers.cloudflare.com/web-analytics/get-started/ for automatic
+beacon injection behavior.
+
+No Stripe final submission or agreement acceptance was performed as part of
+publication. Website availability does not establish payment-method approval
+or availability of the planned trial, signup, checkout or agent APIs. The
+earlier GitHub-to-Cloudflare API authentication failure remains unrepaired;
+production was successfully published through the existing Dashboard session.

@@ -2,7 +2,9 @@
 """Check deployed HTTPS content against this checkout, including the www redirect."""
 
 import importlib.util
+import json
 from pathlib import Path
+import re
 import sys
 import urllib.error
 import urllib.request
@@ -15,6 +17,33 @@ def request(url):
         "User-Agent": USER_AGENT,
         "Cache-Control": "no-cache",
     })
+
+
+def without_edge_beacon(html):
+    """Allow only the observed standard Cloudflare Web Analytics injection.
+
+    All application HTML must still match exactly. Do not ignore arbitrary
+    script tags, markup changes or other edge transformations.
+    """
+    pattern = re.compile(
+        r'''<script type="module" src="https://static\.cloudflareinsights\.com/beacon\.min\.js/[A-Za-z0-9]+" integrity="sha512-[A-Za-z0-9+/=]+" data-cf-beacon='([^']+)' crossorigin="anonymous"></script>\n?'''
+    )
+    matches = list(pattern.finditer(html))
+    if not matches:
+        return html, False
+    if len(matches) != 1:
+        raise RuntimeError("unexpected multiple Cloudflare analytics injections")
+    match = matches[0]
+    try:
+        config = json.loads(match.group(1))
+    except json.JSONDecodeError:
+        raise RuntimeError("unexpected Cloudflare analytics configuration") from None
+    if (not isinstance(config, dict) or set(config) != {"version", "token", "r", "spa"}
+            or not isinstance(config["version"], str)
+            or not re.fullmatch(r"[0-9a-f]{32}", str(config["token"]))
+            or not isinstance(config["r"], int) or not isinstance(config["spa"], int)):
+        raise RuntimeError("unexpected Cloudflare analytics configuration")
+    return html[:match.start()] + html[match.end():], True
 
 
 class NoRedirect(urllib.request.HTTPRedirectHandler):
@@ -48,9 +77,14 @@ def verify():
                 raise RuntimeError(f"{route}: HTTP {response.status}")
             if not response.headers.get("Content-Type", "").startswith(content_type):
                 raise RuntimeError(f"{route}: unexpected content type")
-            if response.read().decode("utf-8") != expected:
+            actual = response.read().decode("utf-8")
+            edge_beacon = False
+            if content_type.startswith("text/html"):
+                actual, edge_beacon = without_edge_beacon(actual)
+            if actual != expected:
                 raise RuntimeError(f"{route}: public content differs from this checkout")
-        print(f"PASS: {url} — 200, expected content")
+        note = "; standard Cloudflare analytics injection identified" if edge_beacon else ""
+        print(f"PASS: {url} — 200, expected content{note}")
     print("PASS: www and favicon fallback redirects; all six public assets match source")
 
 

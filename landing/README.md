@@ -58,7 +58,8 @@ python3 packaging/verify-landing-live.py
 ```
 
 This checks the www redirect and all public assets against the exact local
-source. Also inspect both domains in a browser. A successful deployment
+source. It separately identifies Cloudflare's observed standard Web Analytics
+beacon if the edge injects one; it does not ignore other content changes. Also inspect both domains in a browser. A successful deployment
 request alone is not proof the site is publicly available.
 
 ## Rollback
