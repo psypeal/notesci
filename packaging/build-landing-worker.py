@@ -74,7 +74,7 @@ export default {
       });
     }
     const [body, type, maxAge] = asset;
-    return new Response(request.method === 'HEAD' ? null : body, {
+    return new Response(request.method === 'HEAD' ? null : String(body), {
       headers: headers(type, `public, max-age=${maxAge}, must-revalidate`),
     });
   },
