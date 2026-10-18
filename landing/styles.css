@@ -85,6 +85,7 @@ nav { display: flex; align-items: center; gap: 30px; font-size: 14px; }
 .integration-note { font-size: 13px; margin: 22px 0 0; max-width: 88ch; }
 .project-status { display: grid; grid-template-columns: 1fr 1fr; gap: 64px; margin-top: 38px; }
 .project-status article + article { border-left: 1px solid var(--rule); padding-left: 40px; }
+.service-section { border-top: 1px solid var(--rule); }
 .project-label { font-size: 12px; color: var(--indigo); }
 .project-status h3 { margin-block: 12px 16px; }
 .project-status p { font-size: 15px; }

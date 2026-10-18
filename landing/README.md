@@ -2,7 +2,7 @@
 
 This directory is the static information site for https://notesci.com/.
 It describes the scientific literature search, query and collection plugin
-**in development**, while linking to the existing desktop research project.
+**in development**, as a commercial service with upcoming free trial access and paid plans in development.
 
 There is no public search API, MCP endpoint, signup, checkout, hosted collection
 storage or app backend in this deployment. Target integrations with ChatGPT,
@@ -22,8 +22,10 @@ python3 -m http.server 4173 --bind 127.0.0.1 --directory landing
 
 Inspect http://127.0.0.1:4173/ at desktop and mobile widths. The site needs
 no JavaScript or package installation. The existing typography uses Google
-Fonts with system fallbacks. License, source, support and desktop release
-links go to the existing public GitHub project.
+Fonts with system fallbacks. No source/download marketing or unverified support/policy links are advertised.
+The repository LICENSE and visibility are unchanged; the service is not
+marketed as open source. A working, owner-approved trial/support contact
+remains to be confirmed.
 
 The Worker only embeds an explicit allowlist: index.html, styles.css,
 brand-mark.svg, favicon.svg and apple-touch-icon.svg. It serves the HTML

@@ -36,9 +36,11 @@ the public website does not require starting that stack or touching its data.
 - Publish an information site about the scientific-literature plugin direction.
 - Clearly label hosted search, MCP/REST endpoints, collections, provenance/
   deduplication adapters, optional screening and host integrations as planned.
-- Preserve links to the existing desktop project's source, support, releases
-  and Apache 2.0 license. No verified commercial terms were present in the
-  original landing source; do not fabricate them.
+- Position Notesci as a commercial literature service with upcoming free trial
+  access and paid plans in development. Remove source/download/GitHub-first
+  marketing, desktop offering and the Apache/GitHub website footer.
+- Preserve the repository LICENSE and visibility unchanged. No verified service
+  support/policy destinations or commercial terms were provided; do not fabricate them.
 - Replace only the static Worker module. Keep the existing domain bindings.
 - Do not start the historic app, connect LLM providers, add billing, expose
   credentials, change DNS, create paid services or migrate customer data.
@@ -104,3 +106,27 @@ app commits and local changes intact; do not reset shared branch history.
 
 HTML uses max-age=0 and revalidates on load. CSS is content-versioned; SVG
 icons can remain cached for a day.
+
+## Later read-only access check and commercial correction
+
+The existing browser session is now authenticated to the documented Notesci
+account a56dd840d54fd2d12d2024b1ed3b8546. The Worker overview and Quick Edit
+editor are accessible. The active version shown is f58450b3 (prefix). The
+unchanged editor shows a disabled Deploy control; effective publish permission
+has not been tested. No editor content, secrets, credentials or deployments
+were changed during this access check.
+
+The verified GitHub error is only code 10000, Authentication error. Its root
+cause (for example token validity versus scope versus account selection) is
+not established. A dashboard publication route may avoid changing the GitHub
+secret, but no further production attempt is authorized in this read-only
+check, and publication is held for the corrected commercial presentation.
+
+Official existing editor destination:
+https://dash.cloudflare.com/a56dd840d54fd2d12d2024b1ed3b8546/workers/services/edit/green-sunset-4304/production
+
+The free-trial CTA currently opens real availability information: trial access
+is upcoming. There is no signup, checkout or fabricated inquiry destination.
+The owner must confirm a monitored public email or approved contact form for
+trial inquiries/support before an actionable inquiry CTA can be added.
+No trial price, duration, quota or paid-plan price is invented.
