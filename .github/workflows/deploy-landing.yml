@@ -20,8 +20,17 @@ on:
     paths:
       - 'landing/**'
       - 'packaging/build-landing-worker.py'
+      - 'packaging/test-landing-worker.mjs'
+      - 'packaging/verify-landing-live.py'
       - '.github/workflows/deploy-landing.yml'
   workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: notesci-landing-production
+  cancel-in-progress: false
 
 env:
   CF_WORKER: green-sunset-4304
@@ -36,11 +45,15 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
 
       - name: Build worker.mjs from landing/
         run: |
           python3 packaging/build-landing-worker.py landing build/worker.mjs
           node --check build/worker.mjs
+          node packaging/test-landing-worker.mjs
 
       - name: Deploy to Cloudflare Workers
         env:
@@ -57,10 +70,10 @@ jobs:
 
       - name: Verify live site
         run: |
-          sleep 3
-          if curl -sS --max-time 30 https://notesci.com | grep -q 'Get the desktop app'; then
-            echo "live OK — download section present"
-          else
-            echo "verify failed: download section not found on live site" >&2
-            exit 1
-          fi
+          for attempt in 1 2 3; do
+            if python3 packaging/verify-landing-live.py; then
+              exit 0
+            fi
+            if [ "$attempt" -lt 3 ]; then sleep 5; fi
+          done
+          exit 1

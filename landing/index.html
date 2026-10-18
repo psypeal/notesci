@@ -2,429 +2,91 @@
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
   <meta name="color-scheme" content="light" />
   <meta name="theme-color" content="#f6f4ef" />
-
-  <title>notesci — a fully open-source research workspace</title>
-  <meta name="description" content="notesci is a fully open-source personal knowledge base for scientific research. A desktop app for macOS, Windows, and Linux — multi-provider LLMs, MCP tools, citations, and a drafting pipeline. Self-hosted, single-user, private." />
-
+  <title>notesci — scientific literature for research agents</title>
+  <meta name="description" content="Notesci is developing a scientific literature search, query and collection plugin for agents. Explore the proposed workflow, integration roadmap and existing open-source research workspace." />
+  <link rel="canonical" href="https://notesci.com/" />
   <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
   <link rel="apple-touch-icon" href="/apple-touch-icon.svg" />
-
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter+Tight:wght@400;500;600;700&family=Source+Serif+4:ital,opsz,wght@0,8..60,400;1,8..60,400&family=JetBrains+Mono:wght@500&display=swap" />
-
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter+Tight:wght@400;500;600;700&amp;family=Source+Serif+4:opsz,wght@8..60,400;8..60,500&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap" />
   <link rel="stylesheet" href="/styles.css" />
-
   <meta property="og:type" content="website" />
-  <meta property="og:title" content="notesci — a fully open-source research workspace" />
-  <meta property="og:description" content="Fully open-source personal knowledge base for scientific research. Desktop app for macOS, Windows, and Linux. Self-hosted, single-user, private." />
-  <meta property="og:image" content="/apple-touch-icon.svg" />
+  <meta property="og:url" content="https://notesci.com/" />
+  <meta property="og:title" content="notesci — scientific literature for research agents" />
+  <meta property="og:description" content="A literature search, query and collection plugin in development. Broad science, traceable sources and a planned MCP + REST interface." />
   <meta name="twitter:card" content="summary" />
 </head>
-
 <body>
   <a href="#main" class="skip-to-content">Skip to main content</a>
-
   <header class="site-header">
-    <div class="container">
-      <a href="/" class="lockup" aria-label="notesci">
-        <svg viewBox="0 0 96 96" aria-hidden="true">
-          <g fill="none" stroke-width="8" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M22 22 L22 70" stroke="oklch(0.52 0.22 274)"/>
-            <path d="M22 22 L52 60" stroke="oklch(0.52 0.22 274)"/>
-          </g>
-          <path d="M76 30 C 76 20, 58 20, 58 32 C 58 42, 74 44, 74 54 C 74 66, 56 66, 52 60" fill="none" stroke="oklch(0.62 0.14 195)" stroke-width="8" stroke-linecap="round"/>
-          <g fill="#f6f4ef" stroke-width="3">
-            <circle cx="22" cy="22" r="5" stroke="oklch(0.52 0.22 274)"/>
-            <circle cx="22" cy="70" r="5" stroke="oklch(0.52 0.22 274)"/>
-            <circle cx="76" cy="30" r="5" stroke="oklch(0.62 0.14 195)"/>
-          </g>
-          <circle cx="52" cy="60" r="6.5" fill="#0e1116"/>
-        </svg>
-        <span class="wordmark"><span class="note">note</span><span class="sci">sci</span></span>
-      </a>
-
-      <nav class="nav-links" aria-label="Primary">
-        <a href="#download">Download</a>
-        <a href="#what">What is it</a>
-        <a href="#features">Features</a>
-        <a href="#open-source">Open source</a>
-        <a href="#self-host">Self-host</a>
-        <a href="https://github.com/psypeal/notesci" rel="noopener">GitHub</a>
-      </nav>
+    <div class="container header-inner">
+      <a href="/" class="lockup" aria-label="notesci home"><img src="/brand-mark.svg" width="36" height="36" alt="" /><span class="wordmark"><span class="note">note</span><span class="sci">sci</span></span></a>
+      <nav aria-label="Primary"><a href="#workflow">Workflow</a><a href="#integrations">Integrations</a><a href="#project">Project</a><a class="nav-contact" href="#contact">Contact</a></nav>
     </div>
   </header>
-
   <main id="main">
-    <section class="hero">
-      <div class="container">
-        <span class="eyebrow">Fully open source · Apache 2.0</span>
-        <h1>A <em>quiet</em> workspace for your own research.</h1>
-        <p class="hero-lede">
-          Notesci is a fully open-source, single-user knowledge base for scientists who want their corpus, drafts,
-          and conversations with an LLM to live on their own machine — not someone else's cloud.
-          Self-hosted, provider-agnostic, and built around the way you actually read and write.
-        </p>
-        <div class="cta-row">
-          <a class="btn btn-primary" href="#download">
-            <svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
-              <path d="M8 1.5a.75.75 0 0 1 .75.75v6.69l2.22-2.22a.75.75 0 1 1 1.06 1.06l-3.5 3.5a.75.75 0 0 1-1.06 0l-3.5-3.5a.75.75 0 1 1 1.06-1.06l2.22 2.22V2.25A.75.75 0 0 1 8 1.5ZM2.75 11.5a.75.75 0 0 1 .75.75v1a.75.75 0 0 0 .75.75h7.5a.75.75 0 0 0 .75-.75v-1a.75.75 0 0 1 1.5 0v1A2.25 2.25 0 0 1 11.75 15.5h-7.5A2.25 2.25 0 0 1 2 13.25v-1a.75.75 0 0 1 .75-.75Z"/>
-            </svg>
-            Download
-          </a>
-          <a class="btn btn-secondary" href="https://github.com/psypeal/notesci" rel="noopener">
-            <svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
-              <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0 0 16 8c0-4.42-3.58-8-8-8z"/>
-            </svg>
-            View on GitHub
-          </a>
-        </div>
+    <section class="hero container" aria-labelledby="hero-title">
+      <div class="hero-copy">
+        <p class="status"><span aria-hidden="true"></span> Agent plugin in development</p>
+        <h1 id="hero-title">Scientific literature<br />for research agents.</h1>
+        <p class="hero-lede">Search, query and collect research across science. Notesci is being developed to turn a research question into a collection of scholarly records your agent can inspect and use.</p>
+        <div class="actions"><a class="button primary" href="#workflow">Explore the workflow</a><a class="button secondary" href="https://github.com/psypeal/notesci">View source</a></div>
+        <p class="availability">The hosted search service and agent connectors are planned. They are not available for use on this website yet.</p>
       </div>
-    </section>
-
-    <section id="download">
-      <div class="container">
-        <p class="section-eyebrow">Download</p>
-        <h2>Get the desktop app.</h2>
-        <div class="prose">
-          <p>
-            notesci runs entirely on your own machine — no server, no Docker. The macOS,
-            Windows, and Linux (Fedora/RHEL <code class="code-inline">.rpm</code>) builds bundle
-            everything they need, PostgreSQL and the Python runtime included; the lightweight
-            Debian/Ubuntu <code class="code-inline">.deb</code> uses your system PostgreSQL.
-          </p>
-        </div>
-
-        <div class="downloads" id="downloads">
-          <!-- macOS — card is static; only the Download link triggers the download -->
-          <div class="dl-card" data-os="mac">
-            <div class="dl-card-head">
-              <span class="dl-icon" aria-hidden="true">
-                <svg viewBox="0 0 24 24" fill="currentColor">
-                  <path d="M17.05 12.04c-.03-2.6 2.12-3.85 2.22-3.91-1.21-1.77-3.09-2.01-3.76-2.04-1.6-.16-3.12.94-3.93.94-.81 0-1.72-.92-2.83-.9-1.46.02-2.8.85-3.55 2.16-1.51 2.63-.39 6.51 1.08 8.64.72 1.04 1.58 2.21 2.71 2.17 1.09-.04 1.5-.7 2.82-.7 1.31 0 1.69.7 2.83.68 1.17-.02 1.91-1.06 2.62-2.11.83-1.2 1.17-2.37 1.19-2.43-.03-.01-2.28-.88-2.31-3.48z"/>
-                  <path d="M14.93 4.6c.6-.73 1.01-1.74.9-2.76-.87.04-1.92.58-2.55 1.31-.56.64-1.05 1.67-.92 2.65.97.08 1.96-.49 2.57-1.2z"/>
-                </svg>
-              </span>
-              <span class="dl-os">macOS</span>
-            </div>
-            <span class="dl-variant">Apple Silicon · .dmg</span>
-            <span class="dl-note">Self-contained — bundles PostgreSQL + Python.</span>
-            <a class="dl-cta" data-match="aarch64.dmg" rel="noopener"
-               href="https://github.com/psypeal/notesci/releases/download/v0.1.0/notesci_0.0.1_aarch64.dmg">
-              <svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 1.5a.75.75 0 0 1 .75.75v6.69l2.22-2.22a.75.75 0 1 1 1.06 1.06l-3.5 3.5a.75.75 0 0 1-1.06 0l-3.5-3.5a.75.75 0 1 1 1.06-1.06l2.22 2.22V2.25A.75.75 0 0 1 8 1.5ZM2.75 11.5a.75.75 0 0 1 .75.75v1a.75.75 0 0 0 .75.75h7.5a.75.75 0 0 0 .75-.75v-1a.75.75 0 0 1 1.5 0v1A2.25 2.25 0 0 1 11.75 15.5h-7.5A2.25 2.25 0 0 1 2 13.25v-1a.75.75 0 0 1 .75-.75Z"/></svg>
-              Download <span class="dl-size" data-size>787&nbsp;MB</span>
-            </a>
-          </div>
-
-          <!-- Windows -->
-          <div class="dl-card" data-os="windows">
-            <div class="dl-card-head">
-              <span class="dl-icon" aria-hidden="true">
-                <svg viewBox="0 0 24 24" fill="currentColor">
-                  <path d="M3 5.4 10.3 4.4v6.9H3zM11.5 4.25 21 3v8.3h-9.5zM3 12.7h7.3v6.9L3 18.6zM11.5 12.7H21V21l-9.5-1.3z"/>
-                </svg>
-              </span>
-              <span class="dl-os">Windows</span>
-            </div>
-            <span class="dl-variant">x64 · installer (.exe)</span>
-            <span class="dl-note">Self-contained — bundles PostgreSQL + Python.</span>
-            <a class="dl-cta" data-match="setup.exe" rel="noopener"
-               href="https://github.com/psypeal/notesci/releases/download/v0.1.0/notesci_0.0.1_x64-setup.exe">
-              <svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 1.5a.75.75 0 0 1 .75.75v6.69l2.22-2.22a.75.75 0 1 1 1.06 1.06l-3.5 3.5a.75.75 0 0 1-1.06 0l-3.5-3.5a.75.75 0 1 1 1.06-1.06l2.22 2.22V2.25A.75.75 0 0 1 8 1.5ZM2.75 11.5a.75.75 0 0 1 .75.75v1a.75.75 0 0 0 .75.75h7.5a.75.75 0 0 0 .75-.75v-1a.75.75 0 0 1 1.5 0v1A2.25 2.25 0 0 1 11.75 15.5h-7.5A2.25 2.25 0 0 1 2 13.25v-1a.75.75 0 0 1 .75-.75Z"/></svg>
-              Download <span class="dl-size" data-size>276&nbsp;MB</span>
-            </a>
-          </div>
-
-          <!-- Linux — the Download button opens a popup to pick .deb / .rpm -->
-          <div class="dl-card dl-card--menu" data-os="linux">
-            <div class="dl-card-head">
-              <span class="dl-icon" aria-hidden="true">
-                <svg viewBox="0 0 24 24" fill="currentColor" fill-rule="evenodd">
-                  <path d="M12 2c-2 0-3.4 1.7-3.4 3.9 0 .5.05.95.15 1.35-.65.5-1.05 1.25-1.05 2.1 0 .3.04.55.12.8-.95 1.1-1.98 2.55-2.68 4.1-.3.65-.85 1.95-.35 2.55.32.38.85.28 1.16.6.3.3.2.9.52 1.3.32.4.88.4 1.4.5.42.1.64.52 1.05.72.62.3 1.4.4 2.11.4.72 0 1.5-.1 2.12-.4.4-.2.63-.62 1.05-.72.52-.1 1.08-.1 1.4-.5.32-.4.22-1 .52-1.3.3-.32.84-.22 1.16-.6.5-.6-.05-1.9-.35-2.55-.7-1.55-1.73-3-2.68-4.1.08-.25.12-.5.12-.8 0-.85-.4-1.6-1.05-2.1.1-.4.15-.85.15-1.35C15.4 3.7 14 2 12 2zm-1.4 3.1a.95.95 0 1 1 0 1.9.95.95 0 0 1 0-1.9zm2.8 0a.95.95 0 1 1 0 1.9.95.95 0 0 1 0-1.9z"/>
-                </svg>
-              </span>
-              <span class="dl-os">Linux</span>
-            </div>
-            <span class="dl-variant">.deb / .rpm · x86_64</span>
-            <span class="dl-note">Debian / Ubuntu or Fedora / RHEL — pick your package.</span>
-            <button class="dl-cta dl-cta-trigger" type="button"
-                    aria-haspopup="true" aria-expanded="false" aria-controls="linux-choices">
-              <svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 1.5a.75.75 0 0 1 .75.75v6.69l2.22-2.22a.75.75 0 1 1 1.06 1.06l-3.5 3.5a.75.75 0 0 1-1.06 0l-3.5-3.5a.75.75 0 1 1 1.06-1.06l2.22 2.22V2.25A.75.75 0 0 1 8 1.5ZM2.75 11.5a.75.75 0 0 1 .75.75v1a.75.75 0 0 0 .75.75h7.5a.75.75 0 0 0 .75-.75v-1a.75.75 0 0 1 1.5 0v1A2.25 2.25 0 0 1 11.75 15.5h-7.5A2.25 2.25 0 0 1 2 13.25v-1a.75.75 0 0 1 .75-.75Z"/></svg>
-              Download
-              <svg class="dl-chevron" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M4.22 6.22a.75.75 0 0 1 1.06 0L8 8.94l2.72-2.72a.75.75 0 1 1 1.06 1.06l-3.25 3.25a.75.75 0 0 1-1.06 0L4.22 7.28a.75.75 0 0 1 0-1.06Z"/></svg>
-            </button>
-            <div class="dl-menu" id="linux-choices" role="menu" hidden>
-              <a class="dl-menu-item" role="menuitem" data-match=".deb" rel="noopener"
-                 href="https://github.com/psypeal/notesci/releases/download/v0.1.0/notesci_0.0.1_amd64.deb">
-                <span class="dl-menu-title">Debian / Ubuntu <span class="dl-menu-ext">.deb</span></span>
-                <span class="dl-menu-sub">Uses system PostgreSQL&nbsp;16 + pgvector · <span data-size>3.3&nbsp;MB</span></span>
-              </a>
-              <a class="dl-menu-item" role="menuitem" data-match=".rpm" rel="noopener"
-                 href="https://github.com/psypeal/notesci/releases/download/v0.1.0/notesci-0.0.1-1.x86_64.rpm">
-                <span class="dl-menu-title">Fedora / RHEL <span class="dl-menu-ext">.rpm</span></span>
-                <span class="dl-menu-sub">Self-contained — bundles PostgreSQL + Python · <span data-size>377&nbsp;MB</span></span>
-              </a>
-            </div>
-          </div>
-        </div>
-
-        <p class="dl-foot">
-          <span class="dl-version">Latest release: <a id="dl-version-link" href="https://github.com/psypeal/notesci/releases/latest" rel="noopener">v0.1.0</a>.</span>
-          Builds are unsigned for now — on first launch macOS needs
-          <strong>right-click → Open</strong> and Windows needs
-          <strong>More info → Run anyway</strong>. On a different architecture (Apple Intel,
-          ARM Linux) or want the source? See
-          <a href="https://github.com/psypeal/notesci/releases" rel="noopener">all releases</a>
-          or <a href="#self-host">self-host with Docker</a>.
-        </p>
-      </div>
-    </section>
-
-    <section id="what">
-      <div class="container">
-        <p class="section-eyebrow">What it is</p>
-        <h2>A research tool, not a SaaS.</h2>
-        <div class="prose">
-          <p>
-            Notesci was built for one person — the researcher running it — to ingest papers,
-            ask questions across their own corpus, generate drafts with reviewer feedback,
-            and trace every claim back to a source. There is no team surface, no sharing,
-            no billing. <strong>One person, one workspace, one machine.</strong>
-          </p>
-          <p>
-            It speaks to multiple LLM providers (Anthropic, OpenAI, Google, DeepSeek) through
-            a single chokepoint, so you're never locked into a vendor. It hosts MCP servers
-            for tools you bring yourself. It stores everything in Postgres + pgvector that
-            you control. And it never sends your private notes to a third party you didn't
-            explicitly configure.
-          </p>
-          <p>
-            This is a fully open-source project. The hosted instance has been retired, and the project now
-            exists as source code you run yourself.
-          </p>
-        </div>
-      </div>
-    </section>
-
-    <section id="features">
-      <div class="container">
-        <p class="section-eyebrow">What's inside</p>
-        <h2>The pieces that make it work.</h2>
-
-        <div class="features">
-          <article class="feature">
-            <div class="feature-icon" aria-hidden="true">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
-                <circle cx="12" cy="12" r="9"/>
-                <path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18"/>
-              </svg>
-            </div>
-            <h3>Multi-provider LLMs</h3>
-            <p>Anthropic, OpenAI, Google, DeepSeek — pick per session, per draft stage, or per reviewer. One chokepoint, zero vendor lock-in.</p>
-          </article>
-
-          <article class="feature">
-            <div class="feature-icon" aria-hidden="true">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
-                <rect x="3" y="4" width="18" height="16" rx="2"/>
-                <path d="M3 10h18M9 4v16"/>
-              </svg>
-            </div>
-            <h3>MCP tools, curated</h3>
-            <p>A server-curated catalog of MCP integrations — one-click install, no JSON to author. Bring your own servers too.</p>
-          </article>
-
-          <article class="feature">
-            <div class="feature-icon" aria-hidden="true">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
-                <circle cx="6" cy="6" r="2.5"/>
-                <circle cx="18" cy="6" r="2.5"/>
-                <circle cx="6" cy="18" r="2.5"/>
-                <circle cx="18" cy="18" r="2.5"/>
-                <circle cx="12" cy="12" r="2.5"/>
-                <path d="M7.8 7.8 10 10M16.2 7.8 14 10M7.8 16.2 10 14M16.2 16.2 14 14"/>
-              </svg>
-            </div>
-            <h3>Citations & graph view</h3>
-            <p>Every claim is grounded in a source. Four graph lenses — Map, Citations, Concepts, Reasoning — turn your corpus into something you can navigate.</p>
-          </article>
-
-          <article class="feature">
-            <div class="feature-icon" aria-hidden="true">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M4 4h12l4 4v12H4z"/>
-                <path d="M16 4v4h4M8 12h8M8 16h6"/>
-              </svg>
-            </div>
-            <h3>Drafting pipeline</h3>
-            <p>Pre-flight interview → gather → draft → polish → review → iterate until every reviewer signs off. Per-stage model overrides for when you want a different brain on each turn.</p>
-          </article>
-        </div>
-      </div>
-    </section>
-
-    <section id="open-source">
-      <div class="container">
-        <p class="section-eyebrow">Open source</p>
-        <h2>Built in public, shipped as source.</h2>
-        <div class="prose">
-          <p>
-            Notesci is maintained as a fully open-source project. If you care about trust,
-            reproducibility, and owning your research environment, the project assumptions
-            and toolchain choices are visible in source control.
-          </p>
-          <p>
-            We intentionally keep the stack minimal and composable: you can replace providers,
-            add MCP servers, and pin versions yourself. Pull requests and issue discussions
-            are the normal channel for roadmap and fixes.
-          </p>
-          <p>
-            This means no product lock-in, no paid-hosted dependency in the core pipeline,
-            and no hidden telemetry path in the codebase.
-          </p>
-        </div>
-        <div class="os-actions">
-          <a class="btn btn-primary" href="https://github.com/psypeal/notesci" rel="noopener">
-            <svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
-              <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0 0 16 8c0-4.42-3.58-8-8-8z"/>
-            </svg>
-            Star on GitHub
-          </a>
-          <a class="btn btn-secondary" href="https://github.com/psypeal/notesci/issues/new/choose" rel="noopener">
-            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
-              <circle cx="8" cy="8" r="6.25"/>
-              <circle cx="8" cy="8" r="1.6" fill="currentColor" stroke="none"/>
-            </svg>
-            Open an issue
-          </a>
-          <a class="btn btn-secondary" href="https://github.com/psypeal/notesci/pulls" rel="noopener">
-            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-              <circle cx="4.5" cy="3.5" r="1.6"/>
-              <circle cx="4.5" cy="12.5" r="1.6"/>
-              <circle cx="11.5" cy="9" r="1.6"/>
-              <path d="M4.5 5.1v5.8"/>
-              <path d="M11.5 7.4V6.6A2.6 2.6 0 0 0 8.9 4H4.5"/>
-            </svg>
-            Pull requests
-          </a>
-        </div>
-      </div>
-    </section>
-
-    <section id="self-host">
-      <div class="container">
-        <p class="section-eyebrow">Get it running</p>
-        <h2>Self-host in three steps.</h2>
-        <div class="prose">
-          <p>
-            notesci ships as a FastAPI backend (Python + LangGraph + Postgres/pgvector) and a
-            Vite + React frontend. Docker Compose handles both. You'll need a host with at
-            least 2 GB of RAM and your own API keys for whichever LLM providers you want to use.
-          </p>
-        </div>
-
-        <ol class="self-host-steps">
-          <li class="step">
-            <h3>Clone the repo</h3>
-            <p><code class="code-inline">git clone https://github.com/psypeal/notesci</code> and copy <code class="code-inline">.env.example</code> to <code class="code-inline">.env</code>.</p>
-          </li>
-          <li class="step">
-            <h3>Add your API keys</h3>
-            <p>Drop in keys for any of Anthropic, OpenAI, Google, or DeepSeek. Provider-locked features gracefully fall back when a key is missing.</p>
-          </li>
-          <li class="step">
-            <h3>Boot it</h3>
-            <p><code class="code-inline">docker compose up -d</code> brings up Postgres, the backend, and the frontend behind nginx. Open <code class="code-inline">localhost</code> and you're in.</p>
-          </li>
+      <figure class="research-flow" aria-labelledby="flow-title">
+        <figcaption id="flow-title"><span>From question to collection</span><span class="caption-note">Proposed workflow</span></figcaption>
+        <div class="question"><span>Research question</span><p>How do materials change under repeated stress?</p></div>
+        <ol class="flow-stages">
+          <li><span class="flow-node" aria-hidden="true">1</span><div><strong>Retrieve broadly</strong><span>Scholarly metadata from permitted sources</span></div></li>
+          <li><span class="flow-node" aria-hidden="true">2</span><div><strong>Keep the provenance</strong><span>Source links, identifiers and retrieval context</span></div></li>
+          <li><span class="flow-node" aria-hidden="true">3</span><div><strong>Build a collection</strong><span>Deduplicated records for agent workflows</span></div></li>
         </ol>
+        <div class="flow-result"><span class="result-icon" aria-hidden="true">≡</span><span>Inspect the sources. Keep the context.</span></div>
+        <p class="diagram-note">Illustration of the design; no live search results.</p>
+      </figure>
+    </section>
+    <div class="discipline-band"><div class="container"><span>Research across disciplines</span><ul aria-label="Scientific scope"><li>Life sciences</li><li>Materials</li><li>Environment</li><li>Physics</li><li>And beyond</li></ul></div></div>
+    <section id="workflow" class="container section" aria-labelledby="workflow-title">
+      <div class="section-heading"><p class="section-label">The planned research workflow</p><h2 id="workflow-title">Start broad.<br />Keep the evidence.</h2><p>A useful literature collection starts with discovery and stays connected to its sources. This is the workflow we are building toward.</p></div>
+      <ol class="workflow-list">
+        <li><span class="step-number">01</span><div><h3>Search with recall in mind</h3><p>Retrieve scholarly metadata through permitted APIs and other authorized sources. Coverage will depend on each source’s scope, access conditions and limits.</p></div></li>
+        <li><span class="step-number">02</span><div><h3>Query an inspectable collection</h3><p>Normalize identifiers, merge duplicate records and retain source URLs and retrieval context. Keep conflicting metadata visible for review.</p></div></li>
+        <li><span class="step-number">03</span><div><h3>Screen after retrieval, when useful</h3><p>Add optional relevance screening after broad retrieval. Preserve the retrieved set and screening decisions so researchers can revisit what was excluded.</p></div></li>
+      </ol>
+      <p class="scope-note">Metadata discovery does not grant access to full text. Any full-text retrieval will depend on open access, your entitlements and the source’s terms. Researchers must check the original work before relying on an answer.</p>
+    </section>
+    <section id="integrations" class="integration-section" aria-labelledby="integrations-title">
+      <div class="container section">
+        <div class="section-heading"><p class="section-label">Agent interfaces</p><h2 id="integrations-title">One research workflow.<br />Different agent hosts.</h2><p>We plan to expose literature tools through MCP and REST. Each host will need its own connection, authentication and compatibility checks.</p></div>
+        <div class="integration-table-wrap"><table class="integration-table">
+          <caption>Target integrations — validation pending</caption>
+          <thead><tr><th scope="col">Agent environment</th><th scope="col">Proposed connection</th><th scope="col">Status</th></tr></thead>
+          <tbody>
+            <tr><th scope="row">ChatGPT</th><td>MCP connection, subject to host capabilities</td><td><span class="planned">Planned</span></td></tr>
+            <tr><th scope="row">Claude Code</th><td>MCP tools</td><td><span class="planned">Planned</span></td></tr>
+            <tr><th scope="row">Antigravity</th><td>MCP connection, subject to host capabilities</td><td><span class="planned">Planned</span></td></tr>
+            <tr><th scope="row">DeepSeek-powered agents</th><td>REST tools through the agent’s own adapter</td><td><span class="planned">Planned</span></td></tr>
+          </tbody>
+        </table></div>
+        <p class="integration-note">No integration in this table has been validated for the new literature service. Availability will depend on the host, version, account and permissions. Product names identify intended environments; they do not imply affiliation or endorsement.</p>
       </div>
+    </section>
+    <section id="project" class="container section" aria-labelledby="project-title">
+      <div class="section-heading"><p class="section-label">Where the project stands</p><h2 id="project-title">An existing workspace.<br />A new direction.</h2></div>
+      <div class="project-status">
+        <article><span class="project-label">Existing open-source software</span><h3>The personal research workspace</h3><p>The repository includes a desktop workspace for importing documents, querying a personal corpus with citations, drafting and configuring model providers and external MCP tools.</p><p>These are existing code paths, separate from the planned hosted literature service. Desktop builds are early-stage and require local setup and testing.</p><a class="text-link" href="https://github.com/psypeal/notesci#readme">Read the project documentation</a></article>
+        <article><span class="project-label">Planned development</span><h3>The literature plugin for agents</h3><p>Source adapters, provenance and deduplication, collection export, optional screening, an MCP server and a REST interface are on the roadmap.</p><p>Hosted use will also require authenticated access, tenant-scoped jobs and collections, bounded concurrency and isolation testing before availability.</p><a class="text-link" href="https://github.com/psypeal/notesci/issues">Discuss the roadmap</a></article>
+      </div>
+      <div id="download" class="download-row"><div><h3>Explore the desktop project</h3><p>Existing release assets and installation notes are on GitHub. They are not installers for the planned agent plugin.</p></div><a class="button secondary" href="https://github.com/psypeal/notesci/releases">View desktop releases</a></div>
+    </section>
+    <section id="contact" class="container contact-section" aria-labelledby="contact-title">
+      <div><p class="section-label">Questions, feedback or a bug?</p><h2 id="contact-title">Help shape the research workflow.</h2><p>Use the project’s GitHub issues for support and integration requests. Do not post credentials, private papers or personal data in public issues.</p></div><a class="button primary" href="https://github.com/psypeal/notesci/issues">Contact through GitHub</a>
     </section>
   </main>
-
-  <footer class="site-footer">
-    <div class="container">
-      <a href="/" class="lockup" aria-label="notesci">
-        <svg viewBox="0 0 96 96" aria-hidden="true">
-          <g fill="none" stroke-width="8" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M22 22 L22 70" stroke="oklch(0.52 0.22 274)"/>
-            <path d="M22 22 L52 60" stroke="oklch(0.52 0.22 274)"/>
-          </g>
-          <path d="M76 30 C 76 20, 58 20, 58 32 C 58 42, 74 44, 74 54 C 74 66, 56 66, 52 60" fill="none" stroke="oklch(0.62 0.14 195)" stroke-width="8" stroke-linecap="round"/>
-          <g fill="#f6f4ef" stroke-width="3">
-            <circle cx="22" cy="22" r="5" stroke="oklch(0.52 0.22 274)"/>
-            <circle cx="22" cy="70" r="5" stroke="oklch(0.52 0.22 274)"/>
-            <circle cx="76" cy="30" r="5" stroke="oklch(0.62 0.14 195)"/>
-          </g>
-          <circle cx="52" cy="60" r="6.5" fill="#0e1116"/>
-        </svg>
-        <span class="wordmark"><span class="note">note</span><span class="sci">sci</span></span>
-      </a>
-      <div class="footer-meta">
-        Apache 2.0 · <a href="https://github.com/psypeal/notesci" rel="noopener">github.com/psypeal/notesci</a>
-      </div>
-    </div>
-  </footer>
-
-  <script>
-    // Download section: the Linux Download button opens a .deb/.rpm popup,
-    // and each download link self-updates to the latest GitHub release
-    // (static hrefs are the no-JS / rate-limited fallback).
-    (function () {
-      var REPO = "psypeal/notesci";
-
-      // Linux distro picker: the Download button opens a popup of .deb / .rpm.
-      var trigger = document.querySelector(".dl-cta-trigger");
-      var menu = document.getElementById("linux-choices");
-      if (trigger && menu) {
-        var setOpen = function (open) {
-          trigger.setAttribute("aria-expanded", open ? "true" : "false");
-          menu.hidden = !open;
-        };
-        trigger.addEventListener("click", function () { setOpen(menu.hidden); });
-        document.addEventListener("click", function (e) {
-          if (!menu.hidden && !menu.contains(e.target) && !trigger.contains(e.target)) setOpen(false);
-        });
-        document.addEventListener("keydown", function (e) {
-          if (e.key === "Escape" && !menu.hidden) { setOpen(false); trigger.focus(); }
-        });
-        menu.addEventListener("click", function (e) {
-          if (e.target.closest("a")) setOpen(false);
-        });
-      }
-
-      // Self-updating links from the latest GitHub release.
-      function fmtSize(b) {
-        var mb = b / 1048576;
-        return (mb < 10 ? mb.toFixed(1) : Math.round(mb)) + " MB";
-      }
-      var dlEls = [].slice.call(document.querySelectorAll("[data-match]"));
-      try {
-        fetch("https://api.github.com/repos/" + REPO + "/releases/latest", {
-          headers: { Accept: "application/vnd.github+json" }
-        })
-          .then(function (r) { return r.ok ? r.json() : null; })
-          .then(function (rel) {
-            if (!rel || !rel.assets || !rel.assets.length) return;
-            dlEls.forEach(function (el) {
-              var token = (el.getAttribute("data-match") || "").toLowerCase();
-              if (!token) return;
-              var asset = rel.assets.filter(function (a) {
-                return a.name.toLowerCase().indexOf(token) !== -1;
-              })[0];
-              if (!asset) return;
-              el.setAttribute("href", asset.browser_download_url);
-              var sizeEl = el.querySelector("[data-size]");
-              if (sizeEl) sizeEl.textContent = fmtSize(asset.size);
-            });
-            var vlink = document.getElementById("dl-version-link");
-            if (vlink && rel.tag_name) vlink.textContent = rel.tag_name;
-          })
-          .catch(function () {});
-      } catch (e) {}
-    })();
-  </script>
+  <footer class="site-footer"><div class="container footer-inner"><a href="/" class="lockup" aria-label="notesci home"><img src="/brand-mark.svg" width="28" height="28" alt="" /><span class="wordmark"><span class="note">note</span><span class="sci">sci</span></span></a><p>Open-source code under <a href="https://github.com/psypeal/notesci/blob/main/LICENSE">Apache 2.0</a></p><a href="https://github.com/psypeal/notesci">GitHub</a></div></footer>
 </body>
 </html>

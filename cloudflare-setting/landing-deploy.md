@@ -1,51 +1,90 @@
-# notesci.com deploy
+# notesci.com deployment and restoration
 
-## What actually serves the site
+## Production target
 
-notesci.com (and www.notesci.com) is served by a single **Cloudflare
-module Worker** named **`green-sunset-4304`** in the
-"Admin@notesci.com's Account" (`a56dd840d54fd2d12d2024b1ed3b8546`).
-There is **no Pages project** — the worker embeds the landing files
-(`index.html`, `styles.css`, `favicon.svg`, `apple-touch-icon.svg`) as
-string constants and routes by path, with a `www` → apex 301. The
-custom domains are bound to the worker service, so deploys never touch
-DNS.
+The existing deployment is a Cloudflare **module Worker** named
+**green-sunset-4304**, in the existing Notesci account. The repository documents
+notesci.com and www.notesci.com as custom domains on that Worker. There is no
+Cloudflare Pages project in this workflow.
 
-## Auto-deploy (wired)
+GitHub Actions deploys the Worker from .github/workflows/deploy-landing.yml.
+The existing GitHub repository is https://github.com/psypeal/notesci and its
+production branch is **main**. The action uses the existing
+CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID secrets. Secret names were
+verified; their values were neither retrieved nor copied.
 
-`.github/workflows/deploy-landing.yml` runs on every push to `main`
-that touches `landing/`:
+## Observed shutdown, 18 October 2026
 
-1. `packaging/build-landing-worker.py` regenerates `build/worker.mjs`
-   from `landing/` (so the worker is always a faithful mirror of the
-   committed source — verified byte-identical to the live worker),
-2. `node --check` validates it,
-3. `curl PUT` uploads it to the `green-sunset-4304` Worker via the
-   Cloudflare API,
-4. it re-fetches https://notesci.com and asserts the new content is live.
+At approximately 13:01 UTC, both HTTPS domains returned HTTP **503** with:
 
-**Secrets it uses** (already set on the repo):
-- `CLOUDFLARE_API_TOKEN` — token with `Account › Workers Scripts › Edit`
-- `CLOUDFLARE_ACCOUNT_ID` — `a56dd840d54fd2d12d2024b1ed3b8546`
+```text
+notesci is temporarily unavailable.
+```
 
-So the normal workflow is now: edit `landing/`, commit, push → the site
-redeploys itself within a minute. HTML is served with
-`cache-control: max-age=300`, so a browser may show the old page for up
-to 5 minutes (hard-refresh to bypass).
+Headers included no-store, Retry-After: 86400 and X-Robots-Tag:
+noindex, nofollow, noarchive. This is consistent with a deliberate suspension
+response. Its author, deployment version and application date have not been
+established. That response is not present in the tracked landing source.
 
-## Manual deploy (if ever needed)
+Earlier landing documentation records the retirement of the hosted research
+app and a move from a Vultr VPS to the static Cloudflare site. The legacy
+Docker/Vultr instructions remain in deploy/vultr.md for reference; restoring
+the public website does not require starting that stack or touching its data.
+
+## Restoration scope and implications
+
+- Publish an information site about the scientific-literature plugin direction.
+- Clearly label hosted search, MCP/REST endpoints, collections, provenance/
+  deduplication adapters, optional screening and host integrations as planned.
+- Preserve links to the existing desktop project's source, support, releases
+  and Apache 2.0 license. No verified commercial terms were present in the
+  original landing source; do not fabricate them.
+- Replace only the static Worker module. Keep the existing domain bindings.
+- Do not start the historic app, connect LLM providers, add billing, expose
+  credentials, change DNS, create paid services or migrate customer data.
+
+The public website returning 200 is a website-access check. It does not by
+itself establish payment-method approval, merchant compliance or launch
+readiness. Do not submit a website-remediation assertion to Stripe until
+public loading is independently verified.
+
+## Build, test and publish
 
 ```bash
 python3 packaging/build-landing-worker.py landing build/worker.mjs
-curl -X PUT \
-  "https://api.cloudflare.com/client/v4/accounts/$CF_ACCOUNT_ID/workers/scripts/green-sunset-4304" \
-  -H "Authorization: Bearer $CF_API_TOKEN" \
-  -F 'metadata={"main_module":"worker.mjs","compatibility_date":"2026-05-01"};type=application/json' \
-  -F 'worker.mjs=@build/worker.mjs;filename=worker.mjs;type=application/javascript+module'
+node --check build/worker.mjs
+node packaging/test-landing-worker.mjs
+git diff --check
 ```
 
-## Token hygiene
+A push to main that touches landing/, the builder, its test/verifier or this
+deployment workflow **immediately triggers production deployment**.
+Pushing a feature branch does not deploy. workflow_dispatch also deploys
+the source at the selected workflow ref.
 
-The token used to bootstrap this is account-owned (`cfat_…`). Once it's
-in GitHub secrets, give it a short TTL or rotate it in the CF dashboard;
-the CI token is the only copy that needs to keep working.
+CI uses Node 22 and Python 3.12. It builds the explicit static-file allowlist,
+checks routes/methods/content, uploads the module to the existing Worker and
+runs packaging/verify-landing-live.py. The verifier checks the HTTPS www
+redirect and exact HTML, CSS and SVG contents. Propagation is retried three
+times, five seconds apart. A failed post-deployment verification does not
+automatically revert the upload: inspect the returned run and public site.
+
+Local preview uses a loopback-only static server. Browser review must check
+desktop/mobile layout, in-page navigation, image loading, external links and
+the prominent planned/available distinction.
+
+## Rollback
+
+Record the Cloudflare deployment version before publication when dashboard
+access is available. Restoring that version in the Worker deployment history
+is the way to restore the exact prior live module. Dashboard access was not
+authenticated during initial inspection, so no previous Cloudflare version
+has been recorded by this restoration.
+
+A source-only rollback is a normal revert of the single restoration commit,
+followed by a push to main. It redeploys the previous **tracked landing site**.
+It does not necessarily recreate the manual 503 response. Keep unrelated
+app commits and local changes intact; do not reset shared branch history.
+
+HTML uses max-age=0 and revalidates on load. CSS is content-versioned; SVG
+icons can remain cached for a day.
