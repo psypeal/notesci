@@ -65,8 +65,9 @@ Before publishing, record the current Cloudflare version if dashboard access
 is available. Cloudflare's Worker deployment history is the preferred route
 to restore the exact previous live response.
 
-For a **source rollback**, revert only the landing restoration commit on main
-and push it; the existing action redeploys the preceding tracked landing page.
+For a **source rollback**, create a commit restoring only the nine changed
+landing/deployment paths from pre-restoration ref 9e45266, then push main;
+the existing action redeploys the preceding tracked landing page.
 That restores the old tracked website, not necessarily the manually deployed
 503 shutdown response. Do not reset shared history, revert unrelated app
 commits or delete the historic database.

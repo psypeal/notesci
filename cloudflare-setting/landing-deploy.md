@@ -96,8 +96,9 @@ is the way to restore the exact prior live module. Dashboard access was not
 authenticated during initial inspection, so no previous Cloudflare version
 has been recorded by this restoration.
 
-A source-only rollback is a normal revert of the single restoration commit,
-followed by a push to main. It redeploys the previous **tracked landing site**.
+A source-only rollback restores the nine landing/deployment paths from
+pre-restoration ref 9e45266 in a normal new commit, followed by a push to main.
+It redeploys the previous **tracked landing site**.
 It does not necessarily recreate the manual 503 response. Keep unrelated
 app commits and local changes intact; do not reset shared branch history.
 
