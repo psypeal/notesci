@@ -35,6 +35,12 @@ def verify():
     except urllib.error.HTTPError as response:
         if response.code != 301 or response.headers.get("Location") != "https://notesci.com/":
             raise RuntimeError(f"unexpected www response: HTTP {response.code}") from None
+    try:
+        opener.open(request("https://notesci.com/favicon.ico"), timeout=20)
+        raise RuntimeError("favicon.ico must redirect to the SVG icon")
+    except urllib.error.HTTPError as response:
+        if response.code != 301 or response.headers.get("Location") != "/favicon.svg":
+            raise RuntimeError(f"unexpected favicon fallback: HTTP {response.code}") from None
     for route, (expected, content_type, _) in assets.items():
         url = "https://notesci.com" + route
         with urllib.request.urlopen(request(url), timeout=20) as response:
@@ -45,7 +51,7 @@ def verify():
             if response.read().decode("utf-8") != expected:
                 raise RuntimeError(f"{route}: public content differs from this checkout")
         print(f"PASS: {url} — 200, expected content")
-    print("PASS: www redirects to HTTPS apex; all six public routes match source")
+    print("PASS: www and favicon fallback redirects; all six public assets match source")
 
 
 if __name__ == "__main__":

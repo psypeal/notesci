@@ -60,6 +60,12 @@ export default {
         location: url.toString(), 'cache-control': 'no-cache',
       } });
     }
+    // Browsers can probe this legacy URL even when HTML declares the SVG.
+    if (url.pathname === '/favicon.ico') {
+      return new Response(null, { status: 301, headers: {
+        location: '/favicon.svg', 'cache-control': 'public, max-age=86400',
+      } });
+    }
     const asset = ROUTES.get(url.pathname);
     if (!asset) {
       return new Response(request.method === 'HEAD' ? null :

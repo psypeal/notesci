@@ -48,6 +48,21 @@ itself establish payment-method approval, merchant compliance or launch
 readiness. Do not submit a website-remediation assertion to Stripe until
 public loading is independently verified.
 
+### Publication attempt
+
+The 18 October restoration commit was pushed to main. GitHub Actions run
+39130922353 passed the Worker build and 27 initial route/method checks, but
+Cloudflare rejected the upload with authentication error 10000. The existing
+site remained at 503; live verification was skipped. This is an external
+authentication rejection, not an automatic-approval rejection.
+
+Final local review also added a /favicon.ico redirect to the existing SVG
+icon; all 29 revised Worker checks pass locally. The follow-up commit uses
+[skip ci] so saving that correction does not repeat the rejected upload.
+The owner must restore valid access to the existing account and GitHub
+deployment secrets before dispatching deploy-landing.yml against main.
+Do not create or rotate credentials without the owner's authorization.
+
 ## Build, test and publish
 
 ```bash

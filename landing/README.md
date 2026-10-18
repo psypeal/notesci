@@ -27,7 +27,8 @@ links go to the existing public GitHub project.
 
 The Worker only embeds an explicit allowlist: index.html, styles.css,
 brand-mark.svg, favicon.svg and apple-touch-icon.svg. It serves the HTML
-at both / and /index.html, redirects www to the HTTPS apex, supports GET/HEAD,
+at both / and /index.html, redirects www to the HTTPS apex and legacy
+/favicon.ico requests to /favicon.svg, supports GET/HEAD,
 returns 405 for other methods and 404 for other paths (including /api and /mcp).
 Private config and app files cannot be included by directory traversal or
 directory-wide uploads. CSS URLs have a content hash; HTML always revalidates.

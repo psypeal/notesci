@@ -45,6 +45,14 @@ assert.equal(missingHead.status, 404);
 assert.equal(await missingHead.text(), '');
 checks++;
 
+for (const method of ['GET', 'HEAD']) {
+  const response = await request('/favicon.ico', method);
+  assert.equal(response.status, 301);
+  assert.equal(response.headers.get('location'), '/favicon.svg');
+  assert.equal(await response.text(), '');
+  checks++;
+}
+
 for (const method of ['POST', 'PUT', 'DELETE', 'OPTIONS']) {
   const response = await request('/', method);
   assert.equal(response.status, 405);
